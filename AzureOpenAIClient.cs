@@ -9,7 +9,7 @@ namespace LlmGateway;
 // Rajapinta mahdollistaa mock-toteutuksen testeissä.
 public interface IAzureOpenAIClient
 {
-    Task<ChatResponse> GetChatCompletionAsync(ChatRequest request, string requestId, CancellationToken cancellationToken = default);
+    Task<ChatResponse> GetChatCompletionAsync(ChatRequest request, string requestId, string modelKey, CancellationToken cancellationToken = default);
 }
 
 // Lähettää pyynnöt Azure OpenAI:lle. Sisältää retry-logiikan, per-kutsu timeoutin
@@ -46,16 +46,18 @@ public class AzureOpenAIClient : IAzureOpenAIClient
     // Lähettää chat-pyynnön Azure OpenAI:lle. Tarkistaa circuit breakerin ensin,
     // sen jälkeen yrittää kutsua MaxRetries kertaa transienttien virheiden sattuessa.
     // Heittää CircuitBreakerOpenException jos piiri on auki, HttpRequestException muuten.
-    public async Task<ChatResponse> GetChatCompletionAsync(ChatRequest request, string requestId, CancellationToken cancellationToken = default)
+    public async Task<ChatResponse> GetChatCompletionAsync(ChatRequest request, string requestId, string modelKey, CancellationToken cancellationToken = default)
     {
-        // Avain yksilöi circuit breakerin tilan per deployment
-        var modelKey = $"azure-openai::{_options.DeploymentName}";
+        // Haetaan Azure-deploymentName modelKeyn perusteella konfigista
+        if (!_options.Deployments.TryGetValue(modelKey, out var deploymentName))
+            throw new InvalidOperationException($"Unknown modelKey '{modelKey}' for AzureOpenAI");
 
         using var scope = _logger.BeginScope(new Dictionary<string, object>
         {
             ["requestId"] = requestId,
             ["conversationId"] = request.ConversationId ?? string.Empty,
-            ["modelKey"] = modelKey
+            ["modelKey"] = modelKey,
+            ["deploymentName"] = deploymentName
         });
 
         if (_circuitBreaker.IsOpen(modelKey))
@@ -64,7 +66,7 @@ public class AzureOpenAIClient : IAzureOpenAIClient
             throw new CircuitBreakerOpenException(modelKey);
         }
 
-        var url = $"/openai/deployments/{_options.DeploymentName}/chat/completions?api-version={_options.ApiVersion}";
+        var url = $"/openai/deployments/{deploymentName}/chat/completions?api-version={_options.ApiVersion}";
 
         var payload = new
         {

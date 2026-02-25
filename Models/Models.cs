@@ -6,7 +6,11 @@ namespace LlmGateway;
 public class ChatRequest
 {
     public string Message { get; set; } = string.Empty;
-    public string? ConversationId { get; set; } // mahdollinen jatkokehitystä varten
+
+    // esim. "chat_default" tai "critical"
+    public string? Policy { get; set; }
+
+    public string? ConversationId { get; set; }
 }
 
 // Gatewayn palauttama vastaus asiakkaalle.

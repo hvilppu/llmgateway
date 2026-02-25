@@ -7,9 +7,20 @@ builder.Services.Configure<AzureOpenAIOptions>(
     builder.Configuration.GetSection("AzureOpenAI"));
 builder.Services.Configure<CircuitBreakerOptions>(
     builder.Configuration.GetSection("CircuitBreaker"));
+builder.Services.Configure<PolicyOptions>(options =>
+{
+    var section = builder.Configuration.GetSection("Policies");
+    options.Policies = section.GetChildren()
+        .ToDictionary(
+            s => s.Key,
+            s => s.Get<PolicyConfig>() ?? new PolicyConfig());
+});
 
 // Circuit breaker — singleton jotta tila säilyy kutsujen välillä
 builder.Services.AddSingleton<ICircuitBreaker, InMemoryCircuitBreaker>();
+
+// Routing engine — singleton, lukee konfigin kerran
+builder.Services.AddSingleton<IRoutingEngine, RoutingEngine>();
 
 // HttpClient + typed client
 builder.Services.AddHttpClient<IAzureOpenAIClient, AzureOpenAIClient>(client =>
