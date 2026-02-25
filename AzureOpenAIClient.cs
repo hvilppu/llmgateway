@@ -1,0 +1,207 @@
+using System.Net;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
+using Microsoft.Extensions.Options;
+
+namespace LlmGateway;
+
+// Rajapinta mahdollistaa mock-toteutuksen testeissä.
+public interface IAzureOpenAIClient
+{
+    Task<ChatResponse> GetChatCompletionAsync(ChatRequest request, string requestId, CancellationToken cancellationToken = default);
+}
+
+// Lähettää pyynnöt Azure OpenAI:lle. Sisältää retry-logiikan, per-kutsu timeoutin
+// ja circuit breakerin vikaantuneen palvelun ohittamiseksi.
+public class AzureOpenAIClient : IAzureOpenAIClient
+{
+    private readonly HttpClient _httpClient;
+    private readonly AzureOpenAIOptions _options;
+    private readonly ILogger<AzureOpenAIClient> _logger;
+    private readonly ICircuitBreaker _circuitBreaker;
+
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
+    // HttpClient injektoidaan IHttpClientFactory:n kautta (rekisteröity AddHttpClient:llä).
+    public AzureOpenAIClient(
+        HttpClient httpClient,
+        IOptions<AzureOpenAIOptions> options,
+        ILogger<AzureOpenAIClient> logger,
+        ICircuitBreaker circuitBreaker)
+    {
+        _httpClient = httpClient;
+        _options = options.Value;
+        _logger = logger;
+        _circuitBreaker = circuitBreaker;
+
+        _httpClient.BaseAddress = new Uri(_options.Endpoint);
+        _httpClient.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", _options.ApiKey);
+    }
+
+    // Lähettää chat-pyynnön Azure OpenAI:lle. Tarkistaa circuit breakerin ensin,
+    // sen jälkeen yrittää kutsua MaxRetries kertaa transienttien virheiden sattuessa.
+    // Heittää CircuitBreakerOpenException jos piiri on auki, HttpRequestException muuten.
+    public async Task<ChatResponse> GetChatCompletionAsync(ChatRequest request, string requestId, CancellationToken cancellationToken = default)
+    {
+        // Avain yksilöi circuit breakerin tilan per deployment
+        var modelKey = $"azure-openai::{_options.DeploymentName}";
+
+        using var scope = _logger.BeginScope(new Dictionary<string, object>
+        {
+            ["requestId"] = requestId,
+            ["conversationId"] = request.ConversationId ?? string.Empty,
+            ["modelKey"] = modelKey
+        });
+
+        if (_circuitBreaker.IsOpen(modelKey))
+        {
+            _logger.LogWarning("Circuit breaker is OPEN, rejecting request for {ModelKey}", modelKey);
+            throw new CircuitBreakerOpenException(modelKey);
+        }
+
+        var url = $"/openai/deployments/{_options.DeploymentName}/chat/completions?api-version={_options.ApiVersion}";
+
+        var payload = new
+        {
+            messages = new[]
+            {
+                new { role = "user", content = request.Message }
+            },
+            temperature = 0.2,
+            max_tokens = 512
+        };
+
+        var json = JsonSerializer.Serialize(payload, JsonOptions);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        Exception? lastException = null;
+
+        for (int attempt = 0; attempt <= _options.MaxRetries; attempt++)
+        {
+            var attemptNumber = attempt + 1;
+
+            _logger.LogInformation("Sending Azure OpenAI request. Attempt={Attempt}, MessageLength={MessageLength}",
+                attemptNumber, request.Message.Length);
+
+            try
+            {
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                cts.CancelAfter(_options.TimeoutMs);
+
+                var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+                using var response = await _httpClient.PostAsync(url, content, cts.Token);
+                stopwatch.Stop();
+
+                var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning(
+                        "Azure OpenAI non-success status. StatusCode={StatusCode}, LatencyMs={Latency}, BodySnippet={BodySnippet}",
+                        (int)response.StatusCode,
+                        stopwatch.ElapsedMilliseconds,
+                        responseBody.Length > 300 ? responseBody[..300] : responseBody);
+
+                    if (IsTransient(response.StatusCode))
+                    {
+                        _circuitBreaker.RecordFailure(modelKey);
+
+                        if (attempt < _options.MaxRetries)
+                        {
+                            var delay = TimeSpan.FromMilliseconds(_options.RetryDelayMs * (attempt + 1));
+                            _logger.LogInformation("Transient error, will retry after {DelayMs} ms", delay.TotalMilliseconds);
+                            await Task.Delay(delay, cancellationToken);
+                            continue;
+                        }
+                    }
+                    else
+                    {
+                        _circuitBreaker.RecordFailure(modelKey);
+                    }
+
+                    throw new HttpRequestException($"Azure OpenAI error: {(int)response.StatusCode} {response.ReasonPhrase}");
+                }
+
+                _logger.LogInformation("Azure OpenAI call succeeded. LatencyMs={Latency}", stopwatch.ElapsedMilliseconds);
+
+                var completion = JsonSerializer.Deserialize<AzureChatCompletionResponse>(responseBody, JsonOptions)
+                                 ?? throw new InvalidOperationException("Failed to deserialize Azure OpenAI response");
+
+                var firstMessage = completion.Choices.FirstOrDefault()?.Message?.Content ?? string.Empty;
+
+                var usage = completion.Usage != null
+                    ? new UsageInfo
+                    {
+                        PromptTokens = completion.Usage.Prompt_tokens,
+                        CompletionTokens = completion.Usage.Completion_tokens,
+                        TotalTokens = completion.Usage.Total_tokens
+                    }
+                    : null;
+
+                _circuitBreaker.RecordSuccess(modelKey);
+
+                return new ChatResponse
+                {
+                    Reply = firstMessage,
+                    Model = completion.Model,
+                    Usage = usage,
+                    RequestId = requestId
+                };
+            }
+            catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                // Timeout
+                lastException = ex;
+                _logger.LogWarning(ex, "Azure OpenAI request timed out. Attempt={Attempt}", attemptNumber);
+                _circuitBreaker.RecordFailure(modelKey);
+
+                if (attempt < _options.MaxRetries)
+                {
+                    var delay = TimeSpan.FromMilliseconds(_options.RetryDelayMs * (attempt + 1));
+                    _logger.LogInformation("Timeout, will retry after {DelayMs} ms", delay.TotalMilliseconds);
+                    await Task.Delay(delay, cancellationToken);
+                    continue;
+                }
+
+                break;
+            }
+            catch (Exception ex)
+            {
+                lastException = ex;
+                _logger.LogError(ex, "Azure OpenAI request failed unexpectedly. Attempt={Attempt}", attemptNumber);
+                _circuitBreaker.RecordFailure(modelKey);
+
+                if (attempt < _options.MaxRetries && IsTransientException(ex))
+                {
+                    var delay = TimeSpan.FromMilliseconds(_options.RetryDelayMs * (attempt + 1));
+                    _logger.LogInformation("Transient exception, will retry after {DelayMs} ms", delay.TotalMilliseconds);
+                    await Task.Delay(delay, cancellationToken);
+                    continue;
+                }
+
+                break;
+            }
+        }
+
+        throw lastException ?? new Exception("Azure OpenAI request failed with unknown error");
+    }
+
+    // 408 Timeout, 429 Rate limit ja 5xx ovat tilapäisiä — kannattaa yrittää uudelleen.
+    private static bool IsTransient(HttpStatusCode statusCode)
+    {
+        return statusCode is HttpStatusCode.RequestTimeout
+            or HttpStatusCode.TooManyRequests
+            or >= HttpStatusCode.InternalServerError; // 500+
+    }
+
+    // TaskCanceledException tarkoittaa tässä kontekstissa omaa timeoutia (ei käyttäjän peruutusta).
+    private static bool IsTransientException(Exception ex)
+    {
+        return ex is TaskCanceledException; // voidaan laajentaa esim. SocketExceptioniin jne.
+    }
+}

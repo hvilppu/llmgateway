@@ -1,0 +1,20 @@
+# Build
+bin/
+obj/
+
+# User-specific
+*.user
+*.suo
+.vs/
+
+# Secrets — EI koskaan versionhallintaan
+appsettings.Development.json
+appsettings.Production.json
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db

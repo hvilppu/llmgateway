@@ -1,0 +1,20 @@
+@LlmGateway_HostAddress = http://localhost:5079
+
+POST {{LlmGateway_HostAddress}}/api/chat
+Content-Type: application/json
+
+{
+  "message": "Kerro lyhyt vitsi"
+}
+
+###
+
+POST {{LlmGateway_HostAddress}}/api/chat
+Content-Type: application/json
+
+{
+  "message": "Mikä on Suomen pääkaupunki?",
+  "conversationId": "test-123"
+}
+
+###
