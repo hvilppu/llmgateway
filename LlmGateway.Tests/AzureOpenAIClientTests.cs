@@ -1,0 +1,155 @@
+using System.Net;
+using System.Text;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using Xunit;
+
+namespace LlmGateway.Tests;
+
+public class AzureOpenAIClientTests
+{
+    private static AzureOpenAIOptions BaseOptions(int maxRetries = 0) => new()
+    {
+        Endpoint = "https://fake.openai.azure.com/",
+        ApiKey = "test-key",
+        ApiVersion = "2024-02-15-preview",
+        MaxRetries = maxRetries,
+        RetryDelayMs = 0,
+        TimeoutMs = 5000,
+        Deployments = new Dictionary<string, string> { { "gpt4oMini", "gpt4o-mini-deployment" } }
+    };
+
+    private static AzureOpenAIClient CreateClient(
+        FakeHttpMessageHandler handler,
+        FakeCircuitBreaker circuitBreaker,
+        AzureOpenAIOptions? options = null)
+    {
+        var httpClient = new HttpClient(handler);
+        return new AzureOpenAIClient(
+            httpClient,
+            Options.Create(options ?? BaseOptions()),
+            NullLogger<AzureOpenAIClient>.Instance,
+            circuitBreaker);
+    }
+
+    private static HttpResponseMessage SuccessResponse(string reply = "Hei!") =>
+        new(HttpStatusCode.OK)
+        {
+            Content = new StringContent($$"""
+            {
+                "id": "cmpl-123",
+                "model": "gpt-4",
+                "choices": [{
+                    "index": 0,
+                    "message": { "role": "assistant", "content": "{{reply}}" },
+                    "finish_reason": "stop"
+                }],
+                "usage": {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 5,
+                    "total_tokens": 15
+                }
+            }
+            """, Encoding.UTF8, "application/json")
+        };
+
+    private static HttpResponseMessage ErrorResponse(HttpStatusCode statusCode) =>
+        new(statusCode) { Content = new StringContent("error", Encoding.UTF8, "application/json") };
+
+    [Fact]
+    public async Task GetChatCompletion_WhenCircuitBreakerOpen_ThrowsCircuitBreakerOpenException()
+    {
+        var handler = new FakeHttpMessageHandler();
+        var cb = new FakeCircuitBreaker { IsOpenResult = true };
+        var client = CreateClient(handler, cb);
+
+        await Assert.ThrowsAsync<CircuitBreakerOpenException>(() =>
+            client.GetChatCompletionAsync(new ChatRequest { Message = "Hi" }, "req-1", "gpt4oMini"));
+
+        Assert.Equal(0, handler.CallCount); // HTTP call never made
+    }
+
+    [Fact]
+    public async Task GetChatCompletion_UnknownModelKey_ThrowsInvalidOperationException()
+    {
+        var handler = new FakeHttpMessageHandler();
+        var cb = new FakeCircuitBreaker();
+        var client = CreateClient(handler, cb);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            client.GetChatCompletionAsync(new ChatRequest { Message = "Hi" }, "req-1", "unknownKey"));
+    }
+
+    [Fact]
+    public async Task GetChatCompletion_Success_ReturnsChatResponse()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(SuccessResponse("Moi!"));
+        var cb = new FakeCircuitBreaker();
+        var client = CreateClient(handler, cb);
+
+        var result = await client.GetChatCompletionAsync(
+            new ChatRequest { Message = "Hei" }, "req-42", "gpt4oMini");
+
+        Assert.Equal("Moi!", result.Reply);
+        Assert.Equal("gpt-4", result.Model);
+        Assert.Equal("req-42", result.RequestId);
+        Assert.NotNull(result.Usage);
+        Assert.Equal(10, result.Usage!.PromptTokens);
+        Assert.Equal(5, result.Usage.CompletionTokens);
+        Assert.Equal(15, result.Usage.TotalTokens);
+    }
+
+    [Fact]
+    public async Task GetChatCompletion_Success_RecordsSuccess()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(SuccessResponse());
+        var cb = new FakeCircuitBreaker();
+        var client = CreateClient(handler, cb);
+
+        await client.GetChatCompletionAsync(new ChatRequest { Message = "Hi" }, "req-1", "gpt4oMini");
+
+        Assert.Equal(1, cb.SuccessCount);
+        Assert.Equal(0, cb.FailureCount);
+    }
+
+    [Fact]
+    public async Task GetChatCompletion_TransientError429_RetriesAndRecordsFailures()
+    {
+        // MaxRetries=2 → 3 HTTP calls.
+        // NOTE: RecordFailure is called once per loop iteration via the IsTransient-branch (A),
+        // and once more on the final attempt because the thrown HttpRequestException is caught
+        // by the outer catch(Exception) block (B). Total = 3 + 1 = 4.
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(ErrorResponse(HttpStatusCode.TooManyRequests));
+        handler.Enqueue(ErrorResponse(HttpStatusCode.TooManyRequests));
+        handler.Enqueue(ErrorResponse(HttpStatusCode.TooManyRequests));
+        var cb = new FakeCircuitBreaker();
+        var client = CreateClient(handler, cb, BaseOptions(maxRetries: 2));
+
+        await Assert.ThrowsAsync<HttpRequestException>(() =>
+            client.GetChatCompletionAsync(new ChatRequest { Message = "Hi" }, "req-1", "gpt4oMini"));
+
+        Assert.Equal(3, handler.CallCount);
+        Assert.Equal(4, cb.FailureCount); // 3 from IsTransient-branch + 1 from outer catch
+    }
+
+    [Fact]
+    public async Task GetChatCompletion_NonTransientError_NoRetry()
+    {
+        // 400 Bad Request is not transient — should not retry even if MaxRetries > 0.
+        // NOTE: RecordFailure is called once in the else-branch and once more in the outer
+        // catch(Exception) that re-catches the thrown HttpRequestException. Total = 2.
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(ErrorResponse(HttpStatusCode.BadRequest));
+        var cb = new FakeCircuitBreaker();
+        var client = CreateClient(handler, cb, BaseOptions(maxRetries: 2));
+
+        await Assert.ThrowsAsync<HttpRequestException>(() =>
+            client.GetChatCompletionAsync(new ChatRequest { Message = "Hi" }, "req-1", "gpt4oMini"));
+
+        Assert.Equal(1, handler.CallCount); // no retries
+        Assert.Equal(2, cb.FailureCount);   // 1 from non-transient branch + 1 from outer catch
+    }
+}

@@ -25,6 +25,7 @@ Tärkeimmät käsitteet, lyhenteet ja suunnittelumallit tässä projektissa.
 
 | Termi | Selitys |
 |-------|---------|
+| **APIM** | Azure API Management — Microsoftin hallinnoitu API-gateway. Hoitaa autentikoinnin, rate limitingin, reitityksen ja monitoroinnin infrastruktuuritasolla. Toimii tämän LlmGateway-sovelluksen *edessä*, ei korvaa sovellustason `RoutingEngine`ä (deployment-mappailu ja fallback-logiikka pysyvät koodissa). |
 | **Azure OpenAI** | Microsoftin hallinnoitu OpenAI-palvelu Azure-pilvessä. REST API yhteensopiva OpenAI:n kanssa. |
 | **Endpoint** | Azure OpenAI -resurssin URL-osoite, johon API-kutsut tehdään. |
 | **API Key** | Autentikointiavain Azure OpenAI -kutsuihin. |
