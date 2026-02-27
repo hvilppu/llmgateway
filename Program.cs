@@ -4,11 +4,11 @@ using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// API key auth
+// API-avainautentikointi
 builder.Services.Configure<ApiKeyOptions>(
     builder.Configuration.GetSection("ApiKey"));
 
-// Bind options
+// Sido optiot konfiguraatiosta
 builder.Services.Configure<AzureOpenAIOptions>(
     builder.Configuration.GetSection("AzureOpenAI"));
 builder.Services.Configure<CircuitBreakerOptions>(
@@ -39,13 +39,13 @@ builder.Services.AddSingleton<ICircuitBreaker, InMemoryCircuitBreaker>();
 // Routing engine — singleton, lukee konfigin kerran
 builder.Services.AddSingleton<IRoutingEngine, RoutingEngine>();
 
-// HttpClient + typed client
+// HttpClient + tyypitetty client
 builder.Services.AddHttpClient<IAzureOpenAIClient, AzureOpenAIClient>(client =>
 {
     // BaseAddress ja headerit asetetaan itse client-luokassa
 });
 
-// Add logging etc.
+// Lisää loggaus
 builder.Services.AddLogging();
 
 // Application Insights — lukee connection stringin APPLICATIONINSIGHTS_CONNECTION_STRING-muuttujasta

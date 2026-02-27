@@ -65,7 +65,7 @@ Models/Models.cs          ChatRequest, ChatResponse, UsageInfo, Azure-vastausmal
 `ChatRequest.Policy` määrittää käytettävän mallin ja toimintatavan:
 - `null` / puuttuu → `chat_default` → `gpt4oMini`, yksinkertainen kutsu
 - `"critical"` → `gpt4`, yksinkertainen kutsu fallback-ketjulla
-- `"tools"` → `gpt4`, function calling -agenttiloop (search_documents + query_database)
+- `"tools"` → `gpt4`, function calling -agenttiloop (query_database)
 
 `RoutingEngine.ResolveModelChain` palauttaa [primary, fallback1, ...] -listan.
 `RoutingEngine.IsToolsEnabled` kertoo aktivoiko policy agenttilooppin.
@@ -96,13 +96,13 @@ Models/Models.cs          ChatRequest, ChatResponse, UsageInfo, Azure-vastausmal
 
 ```bash
 # chat_default policy (gpt4oMini)
-curl -X POST http://localhost:5079/api/chat -H "Content-Type: application/json" -d "{\"message\": \"Hei\"}"
+curl -X POST http://localhost:5079/api/chat -H "Content-Type: application/json" -H "X-Api-Key: YOUR-API-KEY" -d "{\"message\": \"Hei\"}"
 
 # critical policy (gpt4)
-curl -X POST http://localhost:5079/api/chat -H "Content-Type: application/json" -d "{\"message\": \"Analysoi tämä\", \"policy\": \"critical\"}"
+curl -X POST http://localhost:5079/api/chat -H "Content-Type: application/json" -H "X-Api-Key: YOUR-API-KEY" -d "{\"message\": \"Analysoi tämä\", \"policy\": \"critical\"}"
 
-# tools policy — LLM valitsee itse search_documents tai query_database
-curl -X POST http://localhost:5079/api/chat -H "Content-Type: application/json" -d "{\"message\": \"Mikä oli lämpötilan keskiarvo Helsingissä helmikuussa 2025?\", \"policy\": \"tools\"}"
+# tools policy — LLM valitsee itse query_database
+curl -X POST http://localhost:5079/api/chat -H "Content-Type: application/json" -H "X-Api-Key: YOUR-API-KEY" -d "{\"message\": \"Mikä oli lämpötilan keskiarvo Helsingissä helmikuussa 2025?\", \"policy\": \"tools\"}"
 ```
 
 OpenAPI-schema: `http://localhost:5079/openapi/v1.json`
@@ -120,7 +120,7 @@ OpenAPI-schema: `http://localhost:5079/openapi/v1.json`
 ### Function calling -agenttiloop (policy: "tools")
 1. POST /api/chat `{ "message": "Mikä oli keskilämpötila Helsingissä helmikuussa?", "policy": "tools" }`
 2. `ChatEndpoints` → `IsToolsEnabled` → true → `HandleWithToolsAsync`
-3. Rakennetaan messages-lista + tool-määrittelyt (search_documents, query_database)
+3. Rakennetaan messages-lista + tool-määrittelyt (query_database)
 4. `AzureOpenAIClient.GetRawCompletionAsync(messages, tools, "gpt4")`
 5. Azure palauttaa `finish_reason: "tool_calls"` → `query_database(sql="SELECT AVG(...)")`
 6. `CosmosQueryService.ExecuteQueryAsync(sql)` → JSON-tulokset

@@ -62,7 +62,6 @@ public static class ChatEndpoints
             ChatRequest request,
             IAzureOpenAIClient client,
             IRoutingEngine routingEngine,
-            IRagService ragService,
             IQueryService queryService,
             ILoggerFactory loggerFactory,
             HttpContext httpContext,

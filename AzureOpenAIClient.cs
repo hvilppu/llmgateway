@@ -176,7 +176,7 @@ public class AzureOpenAIClient : IAzureOpenAIClient
             }
             catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
             {
-                // Timeout
+                // Aikakatkaisu
                 lastException = ex;
                 _logger.LogWarning(ex, "Azure OpenAI request timed out. Attempt={Attempt}", attemptNumber);
                 _circuitBreaker.RecordFailure(modelKey);

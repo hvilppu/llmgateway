@@ -23,7 +23,7 @@ Draw a software architecture diagram for an ASP.NET Core (.NET 10) API gateway c
 - Generates `requestId` from `HttpContext.TraceIdentifier`
 - Calls RoutingEngine to resolve model chain and check `IsToolsEnabled`
 - **Simple path** (ToolsEnabled=false): calls `GetChatCompletionAsync`, iterates fallback chain on error
-- **Agent loop path** (ToolsEnabled=true): calls `GetRawCompletionAsync` with tool definitions in a loop; on `finish_reason=tool_calls` executes tools (search_documents → RagService, query_database → QueryService); repeats until `finish_reason=stop` or max iterations
+- **Agent loop path** (ToolsEnabled=true): calls `GetRawCompletionAsync` with tool definitions in a loop; on `finish_reason=tool_calls` executes tools (query_database → QueryService); repeats until `finish_reason=stop` or max iterations
 - Returns `ChatResponse` (fields: `reply`, `model`, `usage`, `requestId`)
 - Error handling: `CircuitBreakerOpenException` → 503, `HttpRequestException` → 502, `Exception` → 500
 
@@ -47,8 +47,8 @@ Draw a software architecture diagram for an ASP.NET Core (.NET 10) API gateway c
 - Opens after `FailureThreshold` consecutive failures
 - Stays open for `BreakDurationSeconds`, then enters Half-Open
 
-**CosmosRagService** (singleton)
-- `RetrieveContextAsync(query)`: tool handler for `search_documents`
+**CosmosRagService** (singleton, ei aktiivinen tool)
+- `RetrieveContextAsync(query)`: vektorihaku Cosmos DB:stä
 - Calls `GetEmbeddingAsync(query)` to get query vector
 - Runs `VectorDistance` query on Cosmos DB container
 - Returns top-K document content strings concatenated
@@ -102,16 +102,11 @@ Draw a software architecture diagram for an ASP.NET Core (.NET 10) API gateway c
 5. ChatEndpoints → AzureOpenAIClient: `GetRawCompletionAsync(messages, tools, modelKey)`
 6. AzureOpenAIClient → Azure OpenAI Chat API: HTTP POST with `tools` array
 7. Azure OpenAI Chat API → AzureOpenAIClient: `finish_reason=tool_calls` + tool_calls list
-8a. ChatEndpoints → CosmosRagService: `search_documents` tool → `RetrieveContextAsync(query)`
-8b. CosmosRagService → AzureOpenAIClient: `GetEmbeddingAsync(query)`
-8c. AzureOpenAIClient → Azure OpenAI Embeddings API: HTTP POST
-8d. CosmosRagService → Cosmos DB: VectorDistance query → top-K docs
-   OR
-8e. ChatEndpoints → CosmosQueryService: `query_database` tool → `ExecuteQueryAsync(sql)`
-8f. CosmosQueryService → Cosmos DB: SQL SELECT query → JSON results
-9. ChatEndpoints → AzureOpenAIClient: `GetRawCompletionAsync` again with tool results
-10. Azure OpenAI Chat API → AzureOpenAIClient: `finish_reason=stop` + final answer
-11. ChatEndpoints → Client: `ChatResponse`
+8. ChatEndpoints → CosmosQueryService: `query_database` tool → `ExecuteQueryAsync(sql)`
+9. CosmosQueryService → Cosmos DB: SQL SELECT query → JSON results
+10. ChatEndpoints → AzureOpenAIClient: `GetRawCompletionAsync` again with tool results
+11. Azure OpenAI Chat API → AzureOpenAIClient: `finish_reason=stop` + final answer
+12. ChatEndpoints → Client: `ChatResponse`
 
 **Configuration (dashed yellow arrows):**
 - RoutingEngine → appsettings: reads `Policies` + `Deployments`
@@ -162,5 +157,4 @@ Draw a software architecture diagram for an ASP.NET Core (.NET 10) API gateway c
 
 | Tool name          | When LLM uses it                        | Handler            |
 |--------------------|-----------------------------------------|--------------------|
-| `search_documents` | Explanatory / semantic questions        | CosmosRagService   |
 | `query_database`   | Aggregation queries (AVG, SUM, COUNT)   | CosmosQueryService |
