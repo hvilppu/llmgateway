@@ -21,6 +21,10 @@ public interface IRoutingEngine
 {
     // Palauttaa modelKeyn (esim. "gpt4oMini") pyynnön policyn perusteella.
     string ResolveModelKey(ChatRequest request);
+
+    // Palauttaa järjestetyn listan modelKey:stä: [primary, fallback1, fallback2, ...].
+    // Tuntemattomat modelKey:t konfigista jätetään pois lokivaroituksella.
+    IReadOnlyList<string> ResolveModelChain(ChatRequest request);
 }
 
 // Valitsee oikean modelKeyn pyynnön Policy-kentän ja appsettings-konfiguraation perusteella.
@@ -42,7 +46,10 @@ public class RoutingEngine : IRoutingEngine
         _logger = logger;
     }
 
-    public string ResolveModelKey(ChatRequest request)
+    // Palauttaa ensimmäisen modelKey:n ketjusta. Delegoi ResolveModelChain:lle.
+    public string ResolveModelKey(ChatRequest request) => ResolveModelChain(request)[0];
+
+    public IReadOnlyList<string> ResolveModelChain(ChatRequest request)
     {
         var policyName = request.Policy ?? DefaultPolicy;
 
@@ -55,17 +62,32 @@ public class RoutingEngine : IRoutingEngine
                      ?? throw new InvalidOperationException("Default policy 'chat_default' not configured");
         }
 
-        var modelKey = policy.PrimaryModel;
+        var chain = new List<string>();
 
-        // Varmistetaan että modelKey löytyy deployments-konfigista
-        if (!_openAIOptions.Deployments.ContainsKey(modelKey))
+        // Primary model — pakollinen, virhe jos puuttuu deployments-konfigista
+        if (!_openAIOptions.Deployments.ContainsKey(policy.PrimaryModel))
         {
-            _logger.LogError("Policy {PolicyName} refers to unknown modelKey {ModelKey}", policyName, modelKey);
-            throw new InvalidOperationException($"Unknown modelKey '{modelKey}' in policy '{policyName}'");
+            _logger.LogError("Policy {PolicyName} refers to unknown modelKey {ModelKey}", policyName, policy.PrimaryModel);
+            throw new InvalidOperationException($"Unknown modelKey '{policy.PrimaryModel}' in policy '{policyName}'");
         }
 
-        _logger.LogInformation("Routing request. Policy={Policy}, ModelKey={ModelKey}", policyName, modelKey);
+        chain.Add(policy.PrimaryModel);
 
-        return modelKey;
+        // Fallback-mallit — ohitetaan jos ei löydy deployments-konfigista
+        if (policy.Fallbacks is not null)
+        {
+            foreach (var fallback in policy.Fallbacks)
+            {
+                if (_openAIOptions.Deployments.ContainsKey(fallback))
+                    chain.Add(fallback);
+                else
+                    _logger.LogWarning("Fallback modelKey {ModelKey} in policy {PolicyName} not found in deployments, skipping", fallback, policyName);
+            }
+        }
+
+        _logger.LogInformation("Model chain resolved. Policy={Policy}, Chain={Chain}",
+            policyName, string.Join("->", chain));
+
+        return chain;
     }
 }

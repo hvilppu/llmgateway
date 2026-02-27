@@ -1,0 +1,145 @@
+<mxfile host="app.diagrams.net" modified="2026-02-27" agent="Claude Code" version="21.0.0">
+  <diagram name="LlmGateway Architecture" id="llmgateway-arch">
+    <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ===== EXTERNAL: Client ===== -->
+        <mxCell id="client" value="&lt;b&gt;Client&lt;/b&gt;&lt;br&gt;(HTTP caller)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#333333;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="530" y="30" width="160" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ===== GATEWAY CONTAINER ===== -->
+        <mxCell id="gateway" value="&lt;b&gt;LlmGateway — ASP.NET Core (.NET 10)&lt;/b&gt;" style="swimlane;fontStyle=1;fontSize=13;fillColor=#dae8fc;strokeColor=#6c8ebf;startSize=35;" vertex="1" parent="1">
+          <mxGeometry x="80" y="140" width="920" height="550" as="geometry" />
+        </mxCell>
+
+        <!-- HTTPS Redirection (inside gateway, coords relative to gateway) -->
+        <mxCell id="https_mid" value="HTTPS Redirection Middleware" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="gateway">
+          <mxGeometry x="360" y="45" width="200" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- ChatEndpoints (inside gateway) -->
+        <mxCell id="chat_ep" value="&lt;b&gt;ChatEndpoints&lt;/b&gt;&lt;br&gt;POST /api/chat&lt;br&gt;&lt;br&gt;• Deserialize ChatRequest&lt;br&gt;• Generate requestId&lt;br&gt;• Error handling (503 / 502 / 500)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="gateway">
+          <mxGeometry x="310" y="140" width="300" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- RoutingEngine (inside gateway) -->
+        <mxCell id="routing_eng" value="&lt;b&gt;RoutingEngine&lt;/b&gt; (singleton)&lt;br&gt;&lt;br&gt;ResolveModelKey(request)&lt;br&gt;→ returns modelKey&lt;br&gt;&lt;br&gt;Falls back to chat_default&lt;br&gt;if policy unknown" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="gateway">
+          <mxGeometry x="40" y="155" width="220" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- AzureOpenAIClient (inside gateway) -->
+        <mxCell id="az_client" value="&lt;b&gt;AzureOpenAIClient&lt;/b&gt; (typed HttpClient)&lt;br&gt;&lt;br&gt;• Check circuit breaker (IsOpen)&lt;br&gt;• Resolve deploymentName&lt;br&gt;• Per-request timeout (CancelAfter)&lt;br&gt;• Retry loop up to MaxRetries&lt;br&gt;• RecordSuccess / RecordFailure" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="gateway">
+          <mxGeometry x="650" y="140" width="240" height="155" as="geometry" />
+        </mxCell>
+
+        <!-- InMemoryCircuitBreaker (inside gateway) -->
+        <mxCell id="cb" value="&lt;b&gt;InMemoryCircuitBreaker&lt;/b&gt; (singleton)&lt;br&gt;&lt;br&gt;Per-model state in ConcurrentDictionary&lt;br&gt;Closed → Open → Half-Open → Closed&lt;br&gt;FailureThreshold | BreakDurationSeconds" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="gateway">
+          <mxGeometry x="620" y="390" width="280" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- OpenAPI (inside gateway) -->
+        <mxCell id="openapi_ep" value="OpenAPI&lt;br&gt;GET /openapi/v1.json&lt;br&gt;(Development only)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" vertex="1" parent="gateway">
+          <mxGeometry x="40" y="420" width="190" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- ===== EXTERNAL: Azure OpenAI REST API ===== -->
+        <mxCell id="az_api" value="&lt;b&gt;Azure OpenAI REST API&lt;/b&gt;&lt;br&gt;&lt;br&gt;POST /openai/deployments/&lt;br&gt;{deploymentName}/chat/completions&lt;br&gt;?api-version=...&lt;br&gt;&lt;br&gt;Deployments:&lt;br&gt;• gpt4oMini&lt;br&gt;• gpt4" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#333333;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="255" width="230" height="200" as="geometry" />
+        </mxCell>
+
+        <!-- ===== EXTERNAL: appsettings.json ===== -->
+        <mxCell id="appsettings" value="&lt;b&gt;appsettings.json&lt;/b&gt;&lt;br&gt;&lt;br&gt;AzureOpenAI: Endpoint, ApiKey,&lt;br&gt;  TimeoutMs, MaxRetries, RetryDelayMs,&lt;br&gt;  Deployments { gpt4, gpt4oMini }&lt;br&gt;Policies:&lt;br&gt;  chat_default → gpt4oMini&lt;br&gt;  critical → gpt4&lt;br&gt;CircuitBreaker: FailureThreshold,&lt;br&gt;  BreakDurationSeconds" style="shape=note;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;spacingLeft=8;size=20;" vertex="1" parent="1">
+          <mxGeometry x="80" y="760" width="290" height="180" as="geometry" />
+        </mxCell>
+
+        <!-- ===== LEGEND: Policy Routing ===== -->
+        <mxCell id="policy_table" value="&lt;b&gt;Policy Routing&lt;/b&gt;&lt;br&gt;&lt;br&gt;null / missing → chat_default → gpt4oMini&lt;br&gt;&quot;critical&quot;    → critical      → gpt4&lt;br&gt;unknown       → chat_default  → gpt4oMini" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="440" y="770" width="310" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- ===== LEGEND: HTTP Responses ===== -->
+        <mxCell id="http_table" value="&lt;b&gt;HTTP Responses&lt;/b&gt;&lt;br&gt;&lt;br&gt;200 OK  — Success&lt;br&gt;503     — Circuit breaker open&lt;br&gt;502     — Azure error&lt;br&gt;500     — Unexpected error" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="820" y="770" width="220" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- ===== EDGES ===== -->
+
+        <!-- 1. Client → HTTPS Redirection (cross-container) -->
+        <mxCell id="e1" value="POST /api/chat" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;fontStyle=1;" edge="1" source="client" target="https_mid" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- 2. HTTPS Redirection → ChatEndpoints (inside gateway) -->
+        <mxCell id="e2" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" source="https_mid" target="chat_ep" parent="gateway">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- 3. ChatEndpoints → RoutingEngine (inside gateway) -->
+        <mxCell id="e3" value="ResolveModelKey(request)" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=9;" edge="1" source="chat_ep" target="routing_eng" parent="gateway">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- 4. ChatEndpoints → AzureOpenAIClient (inside gateway) -->
+        <mxCell id="e4" value="GetChatCompletionAsync()" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=9;" edge="1" source="chat_ep" target="az_client" parent="gateway">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- 5. AzureOpenAIClient → InMemoryCircuitBreaker (inside gateway) -->
+        <mxCell id="e5" value="IsOpen / RecordSuccess / RecordFailure" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=9;" edge="1" source="az_client" target="cb" parent="gateway">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- 6. AzureOpenAIClient → Azure OpenAI API (cross-container, happy path) -->
+        <mxCell id="e6" value="HTTP POST (JSON payload)" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=9;fontStyle=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="az_client" target="az_api" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- 7. Azure OpenAI API → AzureOpenAIClient (response, dashed) -->
+        <mxCell id="e7" value="ChatResponse / error" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;fontSize=9;exitX=0;exitY=0.7;exitDx=0;exitDy=0;entryX=1;entryY=0.7;entryDx=0;entryDy=0;" edge="1" source="az_api" target="az_client" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- 8. Retry self-loop on AzureOpenAIClient (inside gateway, dashed) -->
+        <mxCell id="e8" value="retry + exponential delay" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;fontSize=9;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=1;entryY=0;entryDx=0;entryDy=0;" edge="1" source="az_client" target="az_client" parent="gateway">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="770" y="110" />
+              <mxPoint x="910" y="110" />
+              <mxPoint x="910" y="140" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- 9. ChatEndpoints → Client (response back, dashed, cross-container) -->
+        <mxCell id="e9" value="ChatResponse (200/503/502/500)" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;fontSize=9;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=1;entryDx=0;entryDy=0;" edge="1" source="chat_ep" target="client" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="100" y="300" />
+              <mxPoint x="100" y="60" />
+              <mxPoint x="530" y="60" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- 10. RoutingEngine → appsettings (config, dashed yellow) -->
+        <mxCell id="e10" value="reads Policies + Deployments" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;strokeColor=#d6b656;fontSize=9;" edge="1" source="routing_eng" target="appsettings" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- 11. AzureOpenAIClient → appsettings (config, dashed yellow) -->
+        <mxCell id="e11" value="reads AzureOpenAI options" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;strokeColor=#d6b656;fontSize=9;" edge="1" source="az_client" target="appsettings" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- 12. InMemoryCircuitBreaker → appsettings (config, dashed yellow) -->
+        <mxCell id="e12" value="reads CB options" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;strokeColor=#d6b656;fontSize=9;" edge="1" source="cb" target="appsettings" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

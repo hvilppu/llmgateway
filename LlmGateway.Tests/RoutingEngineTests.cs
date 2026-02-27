@@ -74,4 +74,59 @@ public class RoutingEngineTests
         Assert.Throws<InvalidOperationException>(() =>
             engine.ResolveModelKey(new ChatRequest { Policy = null }));
     }
+
+    // ===== ResolveModelChain =====
+
+    [Fact]
+    public void ResolveModelChain_NoFallbacks_ReturnsSingleElement()
+    {
+        var engine = Create(DefaultPolicies());
+        var chain = engine.ResolveModelChain(new ChatRequest { Policy = "critical" });
+        Assert.Equal(["gpt4"], chain);
+    }
+
+    [Fact]
+    public void ResolveModelChain_WithValidFallback_ReturnsFullChain()
+    {
+        var policies = new Dictionary<string, PolicyConfig>
+        {
+            { "chat_default", new PolicyConfig { PrimaryModel = "gpt4oMini" } },
+            { "critical", new PolicyConfig { PrimaryModel = "gpt4", Fallbacks = ["gpt4oMini"] } }
+        };
+        var engine = Create(policies);
+
+        var chain = engine.ResolveModelChain(new ChatRequest { Policy = "critical" });
+
+        Assert.Equal(["gpt4", "gpt4oMini"], chain);
+    }
+
+    [Fact]
+    public void ResolveModelChain_FallbackNotInDeployments_SkipsInvalidEntry()
+    {
+        var policies = new Dictionary<string, PolicyConfig>
+        {
+            { "chat_default", new PolicyConfig { PrimaryModel = "gpt4oMini" } },
+            { "critical", new PolicyConfig { PrimaryModel = "gpt4", Fallbacks = ["nonexistent", "gpt4oMini"] } }
+        };
+        var engine = Create(policies);
+
+        var chain = engine.ResolveModelChain(new ChatRequest { Policy = "critical" });
+
+        // "nonexistent" is skipped, "gpt4oMini" kept
+        Assert.Equal(["gpt4", "gpt4oMini"], chain);
+    }
+
+    [Fact]
+    public void ResolveModelChain_ResolveModelKey_ReturnsPrimaryModel()
+    {
+        var policies = new Dictionary<string, PolicyConfig>
+        {
+            { "chat_default", new PolicyConfig { PrimaryModel = "gpt4oMini" } },
+            { "critical", new PolicyConfig { PrimaryModel = "gpt4", Fallbacks = ["gpt4oMini"] } }
+        };
+        var engine = Create(policies);
+
+        // ResolveModelKey must still return only the primary model
+        Assert.Equal("gpt4", engine.ResolveModelKey(new ChatRequest { Policy = "critical" }));
+    }
 }

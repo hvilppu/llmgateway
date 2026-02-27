@@ -27,32 +27,54 @@ public static class ChatEndpoints
 
             try
             {
-                // Valitaan oikea malli pyynnön policyn perusteella
-                var modelKey = routingEngine.ResolveModelKey(request);
+                // Haetaan järjestetty lista malleista: [primary, fallback1, ...]
+                var modelChain = routingEngine.ResolveModelChain(request);
+                ChatResponse? response = null;
+                Exception? lastException = null;
 
-                var response = await client.GetChatCompletionAsync(request, requestId, modelKey, cancellationToken);
+                foreach (var modelKey in modelChain)
+                {
+                    try
+                    {
+                        response = await client.GetChatCompletionAsync(request, requestId, modelKey, cancellationToken);
 
-                logger.LogInformation("Chat request handled successfully. ModelKey={ModelKey}, TotalTokens={TotalTokens}",
-                    modelKey, response.Usage?.TotalTokens ?? 0);
+                        if (modelKey != modelChain[0])
+                            logger.LogInformation("Fallback model succeeded. FallbackModel={ModelKey}", modelKey);
+                        else
+                            logger.LogInformation("Chat request handled successfully. ModelKey={ModelKey}, TotalTokens={TotalTokens}",
+                                modelKey, response.Usage?.TotalTokens ?? 0);
 
-                return Results.Ok(response);
-            }
-            catch (CircuitBreakerOpenException ex)
-            {
-                // Piiri auki — Azure on toistuvasti epäonnistunut, ei edes yritetä
-                logger.LogWarning(ex, "Circuit breaker open, returning 503 for model {ModelKey}", ex.ModelKey);
-                return Results.Problem(
-                    title: "LLM model temporarily unavailable",
-                    detail: $"Circuit breaker is open for model {ex.ModelKey}",
-                    statusCode: StatusCodes.Status503ServiceUnavailable);
-            }
-            catch (HttpRequestException ex)
-            {
-                // Azure vastasi virheellä tai ei vastannut
-                logger.LogError(ex, "Downstream LLM provider error");
+                        break;
+                    }
+                    catch (CircuitBreakerOpenException ex)
+                    {
+                        lastException = ex;
+                        logger.LogWarning(ex, "Circuit breaker open for {ModelKey}, trying next in chain", ex.ModelKey);
+                    }
+                    catch (HttpRequestException ex)
+                    {
+                        lastException = ex;
+                        logger.LogWarning(ex, "Model {ModelKey} failed, trying next in chain", modelKey);
+                    }
+                }
+
+                if (response is not null)
+                    return Results.Ok(response);
+
+                // Kaikki mallit epäonnistui
+                if (lastException is CircuitBreakerOpenException cbEx)
+                {
+                    logger.LogWarning(cbEx, "All models exhausted via circuit breaker");
+                    return Results.Problem(
+                        title: "LLM model temporarily unavailable",
+                        detail: "Circuit breaker is open for all configured models",
+                        statusCode: StatusCodes.Status503ServiceUnavailable);
+                }
+
+                logger.LogError(lastException, "All models in chain exhausted via provider errors");
                 return Results.Problem(
                     title: "LLM provider error",
-                    detail: ex.Message,
+                    detail: lastException?.Message ?? "All models failed",
                     statusCode: StatusCodes.Status502BadGateway);
             }
             catch (Exception ex)
