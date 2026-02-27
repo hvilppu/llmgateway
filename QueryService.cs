@@ -50,19 +50,22 @@ public class CosmosQueryService : IQueryService
             .GetContainer(_options.ContainerName);
 
         var queryDef = new QueryDefinition(sql);
-        var results = new List<JsonElement>();
+        var rows = new List<string>();
 
-        using var feed = container.GetItemQueryIterator<JsonElement>(queryDef);
+        using var feed = container.GetItemQueryStreamIterator(queryDef);
 
         while (feed.HasMoreResults)
         {
-            var page = await feed.ReadNextAsync(cancellationToken);
-            foreach (var item in page)
-                results.Add(item.Clone());
+            using var response = await feed.ReadNextAsync(cancellationToken);
+            using var doc = await JsonDocument.ParseAsync(response.Content, cancellationToken: cancellationToken);
+
+            if (doc.RootElement.TryGetProperty("Documents", out var documents))
+                foreach (var item in documents.EnumerateArray())
+                    rows.Add(item.GetRawText());
         }
 
-        _logger.LogInformation("Query returned {Count} rows", results.Count);
+        _logger.LogInformation("Query returned {Count} rows", rows.Count);
 
-        return JsonSerializer.Serialize(results, JsonOpts);
+        return "[" + string.Join(",", rows) + "]";
     }
 }

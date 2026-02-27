@@ -130,3 +130,6 @@ OpenAPI-schema: `http://localhost:5079/openapi/v1.json`
 
 ## Git
 Important: I make commits manyally DO NOT EVER DO COMMITS
+
+## Facts and hallucinating
+Use facts NOT hallucinating
