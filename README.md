@@ -6,6 +6,11 @@ ASP.NET Core 10 minimal API gateway for Azure OpenAI, with retry, timeout and ci
 
 ## Käyttöönotto-järjestys
 
+### 0. Resource group
+```bash
+az group create --name rg-llmgateway-prod --location swedencentral
+```
+
 ### 1. Luo Azure OpenAI -resurssi
 
 ```bash
@@ -25,17 +30,13 @@ az cognitiveservices account deployment create --name my-openai-resource --resou
 ### 3. Päivitä `infra/main.bicepparam`
 
 ```
-param appName              = 'llmgateway-prod'              # oltava globaalisti uniikki
+param appName              = 'xyz-llmgateway-prod' # esimerkki oltava globaalisti uniikki
 param azureOpenAIEndpoint  = 'https://my-openai-resource.openai.azure.com/'
 param gpt4DeploymentName   = 'gpt4-deployment'
 param gpt4oMiniDeploymentName = 'gpt4o-mini-deployment'
 ```
 
 ### 4. Provisioi infra
-
-```bash
-az group create --name rg-llmgateway-prod --location swedencentral
-```
 
 ```bash
 az deployment group create --resource-group rg-llmgateway-prod --template-file infra/main.bicep --parameters infra/main.bicepparam --parameters azureOpenAIApiKey="<avaimesi>"
@@ -52,7 +53,7 @@ API-avain löytyy: **Azure Portal → Azure OpenAI -resurssi → Keys and Endpoi
 | Secret   | `AZURE_CLIENT_ID`              | Service principal (infra.yml)                           |
 | Secret   | `AZURE_TENANT_ID`              | Service principal (infra.yml)                           |
 | Secret   | `AZURE_SUBSCRIPTION_ID`        | Service principal (infra.yml)                           |
-| Variable | `AZURE_WEBAPP_NAME`            | `llmgateway-prod`                                       |
+| Variable | `AZURE_WEBAPP_NAME`            | `xyz-llmgateway-prod`                                       |
 | Variable | `AZURE_RESOURCE_GROUP`         | `rg-llmgateway-prod`                                    |
 
 ### 6. Deploy

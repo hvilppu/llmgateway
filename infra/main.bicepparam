@@ -3,17 +3,17 @@
 
 using './main.bicep'
 
-param appName              = 'llmgateway-prod'       // muuta yksilölliseksi
+param appName              = 'xyz-llmgateway-prod'       // muuta yksilölliseksi
 param location             = 'swedencentral'
 param sku                  = 'B1'
 
 param azureOpenAIApiKey    = ''  // EI täytetä tähän — tulee pipeline-secretistä (AZURE_OPENAI_API_KEY)
 
-param azureOpenAIEndpoint  = 'https://YOUR-RESOURCE.openai.azure.com/'
+param azureOpenAIEndpoint  = 'https://swedencentral.api.cognitive.microsoft.com/'
 param azureOpenAIApiVersion = '2024-02-15-preview'
 
-param gpt4DeploymentName      = 'YOUR-GPT4-DEPLOYMENT-NAME'
-param gpt4oMiniDeploymentName = 'YOUR-GPT4O-MINI-DEPLOYMENT-NAME'
+param gpt4DeploymentName      = 'gpt4-deployment'
+param gpt4oMiniDeploymentName = 'gpt4o-mini-deployment'
 
 // Jätä oletusarvot tai ylikirjoita tarvittaessa:
 // param azureOpenAITimeoutMs             = 15000
