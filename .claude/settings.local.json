@@ -5,7 +5,9 @@
       "Bash(cd /d/Koodit/LlmGateway.Tests && dotnet test --logger \"console;verbosity=normal\" 2>&1)",
       "Bash(dotnet build:*)",
       "Bash(dotnet test:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(dotnet add:*)",
+      "Bash(git:*)"
     ]
   }
 }

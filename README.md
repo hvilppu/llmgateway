@@ -38,6 +38,12 @@ param gpt4oMiniDeploymentName = 'gpt4o-mini-deployment'
 
 ### 4. Provisioi infra
 
+Tarkista ensin mitä muuttuu:
+```bash
+az deployment group what-if --resource-group rg-llmgateway-prod --template-file infra/main.bicep --parameters infra/main.bicepparam --parameters azureOpenAIApiKey="<avaimesi>"
+```
+
+Aja infra (idempotent — turvallista ajaa uudelleen myös muutosten jälkeen):
 ```bash
 az deployment group create --resource-group rg-llmgateway-prod --template-file infra/main.bicep --parameters infra/main.bicepparam --parameters azureOpenAIApiKey="<avaimesi>"
 ```
