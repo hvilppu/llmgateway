@@ -9,7 +9,7 @@ namespace LlmGateway;
 // Rajapinta mahdollistaa mock-toteutuksen testeissä.
 public interface IAzureOpenAIClient
 {
-    Task<ChatResponse> GetChatCompletionAsync(ChatRequest request, string requestId, string modelKey, string? ragContext = null, CancellationToken cancellationToken = default);
+    Task<ChatResponse> GetChatCompletionAsync(ChatRequest request, string requestId, string modelKey, string? systemPrompt = null, CancellationToken cancellationToken = default);
     Task<float[]> GetEmbeddingAsync(string text, CancellationToken cancellationToken = default);
 
     // Raaka chat completion -kutsu function calling -agenttilooppia varten.
@@ -57,7 +57,7 @@ public class AzureOpenAIClient : IAzureOpenAIClient
     // Lähettää chat-pyynnön Azure OpenAI:lle. Tarkistaa circuit breakerin ensin,
     // sen jälkeen yrittää kutsua MaxRetries kertaa transienttien virheiden sattuessa.
     // Heittää CircuitBreakerOpenException jos piiri on auki, HttpRequestException muuten.
-    public async Task<ChatResponse> GetChatCompletionAsync(ChatRequest request, string requestId, string modelKey, string? ragContext = null, CancellationToken cancellationToken = default)
+    public async Task<ChatResponse> GetChatCompletionAsync(ChatRequest request, string requestId, string modelKey, string? systemPrompt = null, CancellationToken cancellationToken = default)
     {
         // Haetaan Azure-deploymentName modelKeyn perusteella konfigista
         if (!_options.Deployments.TryGetValue(modelKey, out var deploymentName))
@@ -79,10 +79,10 @@ public class AzureOpenAIClient : IAzureOpenAIClient
 
         var url = $"/openai/deployments/{deploymentName}/chat/completions?api-version={_options.ApiVersion}";
 
-        var messages = ragContext is not null
+        var messages = systemPrompt is not null
             ? new object[]
             {
-                new { role = "system", content = $"Use the following context to answer the question. If the context does not contain enough information, say so.\n\nContext:\n{ragContext}" },
+                new { role = "system", content = systemPrompt },
                 new { role = "user",   content = request.Message }
             }
             : new object[]

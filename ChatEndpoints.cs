@@ -6,10 +6,18 @@ public static class ChatEndpoints
 {
     private const int MaxToolIterations = 5;
 
+    // Tools-polun system prompt: rajoittaa LLM:n lämpötiladataan ja ohjaa käyttämään työkalua.
     private const string SystemPrompt =
-        "Olet avulias assistentti. Vastaa suomeksi. Sinulla on käytettävissä työkalu:\n" +
+        "Olet assistentti joka vastaa AINOASTAAN Suomen kaupunkien lämpötila- ja säädataan liittyviin kysymyksiin. " +
+        "Vastaa suomeksi. Jos kysymys ei liity lämpötila- tai säädataan, kieltäydy kohteliaasti. " +
+        "Sinulla on käytettävissä työkalu:\n" +
         "- query_database: suorita Cosmos DB SQL -kysely (käytä aggregointiin: keskiarvot, summat, määrät, suodatus)\n" +
         "Käytä työkalua aina kun kysymys koskee dataa.";
+
+    // Yksinkertaisen polun system prompt: rajoittaa aiheeseen ilman työkaluja.
+    private const string SimpleSystemPrompt =
+        "Olet assistentti joka vastaa AINOASTAAN Suomen kaupunkien lämpötila- ja säädataan liittyviin kysymyksiin. " +
+        "Vastaa suomeksi. Jos kysymys ei liity aiheeseen, kieltäydy kohteliaasti.";
 
     private static readonly object QueryDatabaseTool = new
     {
@@ -114,7 +122,7 @@ public static class ChatEndpoints
         {
             try
             {
-                response = await client.GetChatCompletionAsync(request, requestId, modelKey, null, cancellationToken);
+                response = await client.GetChatCompletionAsync(request, requestId, modelKey, SimpleSystemPrompt, cancellationToken);
 
                 if (modelKey != modelChain[0])
                     logger.LogInformation("Fallback model succeeded. FallbackModel={ModelKey}", modelKey);
