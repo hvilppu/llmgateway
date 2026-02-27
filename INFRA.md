@@ -113,6 +113,12 @@ Sweden Centralissa yleensä toimivat:
 | `text-embedding-3-large` | `1` | Tarkempi, kalliimpi |
 | `text-embedding-ada-002` | `2` | Vanhempi, laajasti saatavilla |
 
+Jos saat virheen `Standard is not supported`, käytä `GlobalStandard`:
+
+```bash
+az cognitiveservices account deployment create --name my-openai-resource --resource-group rg-llmgateway-prod --deployment-name text-embedding-3-small --model-name text-embedding-3-small --model-version "1" --model-format OpenAI --sku-capacity 10 --sku-name GlobalStandard
+```
+
 Kun tiedät oikean mallin ja version, päivitä `infra/main.bicepparam`:
 
 ```
