@@ -31,6 +31,9 @@ builder.Services.AddHttpClient<IAzureOpenAIClient, AzureOpenAIClient>(client =>
 // Add logging etc.
 builder.Services.AddLogging();
 
+// Application Insights — lukee connection stringin APPLICATIONINSIGHTS_CONNECTION_STRING-muuttujasta
+builder.Services.AddApplicationInsightsTelemetry();
+
 // http://localhost:5079/openapi/v1.json
 builder.Services.AddOpenApi();
 

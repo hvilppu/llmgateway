@@ -38,6 +38,29 @@ param gpt4oMiniDeploymentName string
 param circuitBreakerFailureThreshold int = 5
 param circuitBreakerBreakDurationSeconds int = 30
 
+// ── Log Analytics Workspace ───────────────────────────────────────────────────
+
+resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
+  name: '${appName}-logs'
+  location: location
+  properties: {
+    sku: { name: 'PerGB2018' }
+    retentionInDays: 30
+  }
+}
+
+// ── Application Insights ──────────────────────────────────────────────────────
+
+resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
+  name: '${appName}-insights'
+  location: location
+  kind: 'web'
+  properties: {
+    Application_Type: 'web'
+    WorkspaceResourceId: logAnalytics.id
+  }
+}
+
 // ── App Service Plan ──────────────────────────────────────────────────────────
 
 resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
@@ -88,6 +111,10 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
         // Circuit Breaker
         { name: 'CircuitBreaker__FailureThreshold',      value: string(circuitBreakerFailureThreshold) }
         { name: 'CircuitBreaker__BreakDurationSeconds',  value: string(circuitBreakerBreakDurationSeconds) }
+
+        // Application Insights
+        { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING',        value: appInsights.properties.ConnectionString }
+        { name: 'ApplicationInsightsAgent_EXTENSION_VERSION',   value: '~3' }
       ]
     }
   }
@@ -97,3 +124,4 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
 
 output appName string = webApp.name
 output appUrl string = 'https://${webApp.properties.defaultHostName}'
+output appInsightsName string = appInsights.name
