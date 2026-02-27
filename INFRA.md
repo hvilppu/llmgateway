@@ -96,3 +96,33 @@ Infra-muutokset: aja `infra.yml` manuaalisesti GitHub Actions → **Provision In
 | `infra/main.bicepparam` | Parametriarvot (ei salaisuuksia) |
 | `.github/workflows/deploy.yml` | Koodi-deploy — käynnistyy automaattisesti push:lla |
 | `.github/workflows/infra.yml` | Infra-deploy — ajetaan manuaalisesti |
+
+## Embedding-mallin versio
+
+Tarkista mitä malleja Azure OpenAI -resurssissasi on saatavilla:
+
+```bash
+az cognitiveservices account list-models --name my-openai-resource --resource-group rg-llmgateway-prod --query "[?contains(name, 'embedding')].{name:name, version:version}" --output table
+```
+
+Sweden Centralissa yleensä toimivat:
+
+| Malli | Versio | Huomio |
+|-------|--------|--------|
+| `text-embedding-3-small` | `1` | Suositeltu — pienin ja halvin |
+| `text-embedding-3-large` | `1` | Tarkempi, kalliimpi |
+| `text-embedding-ada-002` | `2` | Vanhempi, laajasti saatavilla |
+
+Kun tiedät oikean mallin ja version, päivitä `infra/main.bicepparam`:
+
+```
+param embeddingDeploymentName = 'text-embedding-3-small'   # deployment-nimi jonka annoit
+```
+
+ja `appsettings.json`:
+
+```json
+"AzureOpenAI": {
+  "EmbeddingDeployment": "text-embedding-3-small"
+}
+```
