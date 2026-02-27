@@ -127,3 +127,6 @@ OpenAPI-schema: `http://localhost:5079/openapi/v1.json`
 7. Lisätään tool-tulos messages-listaan, loop uudelleen
 8. Azure palauttaa `finish_reason: "stop"` → lopullinen vastaus
 9. Vastaus: `{ "reply": "Helmikuussa 2025 keskilämpötila Helsingissä oli -3.2°C.", ... }`
+
+## Git
+Important: I make commits manyally DO NOT EVER DO COMMITS
