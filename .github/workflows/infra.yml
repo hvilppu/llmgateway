@@ -2,10 +2,11 @@
 # Ajetaan manuaalisesti kun infraa muutetaan — ei automaattisesti.
 #
 # Vaadittavat GitHub-asetukset:
-#   Secrets : AZURE_CLIENT_ID        (service principal / OIDC)
+#   Secrets : AZURE_CLIENT_ID              (service principal / OIDC)
 #             AZURE_TENANT_ID
 #             AZURE_SUBSCRIPTION_ID
-#             AZURE_OPENAI_API_KEY   (ei koskaan params-tiedostoon)
+#             AZURE_OPENAI_API_KEY         (ei koskaan params-tiedostoon)
+#             AZURE_COSMOS_CONNECTION_STRING (ei koskaan params-tiedostoon)
 #   Variables: AZURE_RESOURCE_GROUP  (esim. rg-llmgateway-prod)
 #
 # Service principal -luonti:
@@ -54,6 +55,7 @@ jobs:
             --template-file infra/main.bicep \
             --parameters infra/main.bicepparam \
             --parameters azureOpenAIApiKey=${{ secrets.AZURE_OPENAI_API_KEY }} \
+            --parameters cosmosConnectionString=${{ secrets.AZURE_COSMOS_CONNECTION_STRING }} \
             --output table
 
       - name: Show App URL

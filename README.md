@@ -66,6 +66,7 @@ API-avain löytyy: **Azure Portal → Azure OpenAI -resurssi → Keys and Endpoi
 |----------|--------------------------------|---------------------------------------------------------|
 | Secret   | `AZURE_WEBAPP_PUBLISH_PROFILE` | Azure Portal → App Service → Get publish profile        |
 | Secret   | `AZURE_OPENAI_API_KEY`         | Azure Portal → Azure OpenAI → Keys and Endpoint → KEY 1 |
+| Secret   | `AZURE_COSMOS_CONNECTION_STRING` | Azure Portal → Cosmos DB → Keys → PRIMARY CONNECTION STRING |
 | Secret   | `AZURE_CLIENT_ID`              | Service principal (infra.yml)                           |
 | Secret   | `AZURE_TENANT_ID`              | Service principal (infra.yml)                           |
 | Secret   | `AZURE_SUBSCRIPTION_ID`        | Service principal (infra.yml)                           |
