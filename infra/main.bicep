@@ -133,7 +133,7 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'Policies__chat_default__PrimaryModel',  value: 'gpt4oMini' }
         { name: 'Policies__critical__PrimaryModel',       value: 'gpt4' }
         { name: 'Policies__critical__Fallbacks__0',       value: 'gpt4oMini' }
-        { name: 'Policies__tools__PrimaryModel',          value: gpt4DeploymentName }
+        { name: 'Policies__tools__PrimaryModel',          value: 'gpt4' }
         { name: 'Policies__tools__ToolsEnabled',          value: 'true' }
 
         // Cosmos DB RAG

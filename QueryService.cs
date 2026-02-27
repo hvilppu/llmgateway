@@ -58,7 +58,7 @@ public class CosmosQueryService : IQueryService
         {
             var page = await feed.ReadNextAsync(cancellationToken);
             foreach (var item in page)
-                results.Add(item);
+                results.Add(item.Clone());
         }
 
         _logger.LogInformation("Query returned {Count} rows", results.Count);
