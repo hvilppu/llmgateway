@@ -15,7 +15,7 @@ az cognitiveservices account create --name my-openai-resource --resource-group r
 ### 2. Luo model deploymentit
 
 ```bash
-az cognitiveservices account deployment create --name my-openai-resource --resource-group rg-llmgateway-prod --deployment-name gpt4-deployment --model-name gpt-4 --model-version "turbo-2024-04-09" --model-format OpenAI --sku-capacity 10 --sku-name Standard
+az cognitiveservices account deployment create --name my-openai-resource --resource-group rg-llmgateway-prod --deployment-name gpt4-deployment --model-name gpt-4o --model-version "2024-11-20" --model-format OpenAI --sku-capacity 10 --sku-name Standard
 ```
 
 ```bash
