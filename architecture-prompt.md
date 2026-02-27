@@ -17,6 +17,7 @@ Draw a software architecture diagram for an ASP.NET Core (.NET 10) API gateway c
 
 **ASP.NET Core Middleware Pipeline** (inside the gateway process)
 - HTTPS Redirection middleware
+- ApiKeyMiddleware: validates `X-Api-Key` header on every request (except `/openapi/*`), returns 401 on failure
 
 **ChatEndpoints** (`POST /api/chat`)
 - Receives `ChatRequest` (fields: `message`, `policy`, `conversationId`)
@@ -38,7 +39,7 @@ Draw a software architecture diagram for an ASP.NET Core (.NET 10) API gateway c
 - `GetRawCompletionAsync`: chat call with tool definitions, returns raw Azure response including `finish_reason` and `tool_calls`
 - `GetEmbeddingAsync`: POST to Embeddings API for RAG vector generation
 - Per-request timeout via `CancellationTokenSource.CancelAfter`
-- Retry loop up to `MaxRetries` with exponential delay
+- Retry loop up to `MaxRetries` with linear delay (`RetryDelayMs * attemptNumber`)
 - Calls `ICircuitBreaker.RecordFailure/RecordSuccess`
 
 **InMemoryCircuitBreaker** (singleton)
@@ -86,7 +87,7 @@ Draw a software architecture diagram for an ASP.NET Core (.NET 10) API gateway c
 ### Key Relationships / Arrows
 
 **Simple path (ToolsEnabled=false):**
-1. Client → HTTPS Redirection → ChatEndpoints: `POST /api/chat`
+1. Client → HTTPS Redirection → ApiKeyMiddleware → ChatEndpoints: `POST /api/chat`
 2. ChatEndpoints → RoutingEngine: `ResolveModelChain(request)` → `[modelKey, ...]`
 3. ChatEndpoints → AzureOpenAIClient: `GetChatCompletionAsync(request, requestId, modelKey)`
 4. AzureOpenAIClient → InMemoryCircuitBreaker: `IsOpen(modelKey)` check
@@ -109,6 +110,7 @@ Draw a software architecture diagram for an ASP.NET Core (.NET 10) API gateway c
 12. ChatEndpoints → Client: `ChatResponse`
 
 **Configuration (dashed yellow arrows):**
+- ApiKeyMiddleware → appsettings: reads `ApiKey` options
 - RoutingEngine → appsettings: reads `Policies` + `Deployments`
 - AzureOpenAIClient → appsettings: reads `AzureOpenAI` options
 - InMemoryCircuitBreaker → appsettings: reads `CircuitBreaker` options
@@ -122,7 +124,7 @@ Draw a software architecture diagram for an ASP.NET Core (.NET 10) API gateway c
 - Use a **light blue** background for gateway-internal components
 - Use **gray** for external systems (Client, Azure OpenAI APIs, Cosmos DB, appsettings)
 - Use **red/orange** to highlight the Circuit Breaker
-- Use **green** for tool execution components (CosmosRagService, CosmosQueryService)
+- Use **green** for tool execution components (CosmosQueryService)
 - Use **dashed arrows** for error paths, retry loops, and config reads
 - Use **solid arrows** for the happy path
 - Show the agent loop as a box or group with a loop-back arrow

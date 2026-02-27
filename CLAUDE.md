@@ -72,7 +72,7 @@ Models/Models.cs          ChatRequest, ChatResponse, UsageInfo, Azure-vastausmal
 
 ## Resilientti kutsulogiikka (AzureOpenAIClient)
 
-- **Retry**: `MaxRetries` uudelleenyritystä eksponentiaalisella viiveellä
+- **Retry**: `MaxRetries` uudelleenyritystä lineaarisella viiveellä (`RetryDelayMs * yritysnumero`)
 - **Timeout**: per-kutsu timeout `CancellationTokenSource.CancelAfter`
 - **Circuit breaker**: avautuu `FailureThreshold` virheen jälkeen, sulkeutuu `BreakDurationSeconds` kuluttua
 - Transientit virheet: 408, 429, 5xx + `TaskCanceledException`
