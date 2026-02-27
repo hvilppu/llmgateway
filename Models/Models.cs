@@ -51,7 +51,7 @@ public class AzureUsage
 }
 
 // Yksi vaihtoehto Azure:n vastauksessa. Tavallisesti Choices-listassa on yksi alkio.
-// Finish_reason kertoo miksi generointi päättyi (esim. "stop").
+// Finish_reason kertoo miksi generointi päättyi (esim. "stop" tai "tool_calls").
 public class AzureChoice
 {
     public int Index { get; set; }
@@ -60,8 +60,36 @@ public class AzureChoice
 }
 
 // Azure:n palauttama yksittäinen viesti. Role on tyypillisesti "assistant".
+// Tool calling -vastauksessa Content voi olla null ja ToolCalls sisältää kutsut.
 public class AzureMessage
 {
     public string Role { get; set; } = string.Empty;
-    public string Content { get; set; } = string.Empty;
+    public string? Content { get; set; }
+    public List<AzureToolCall>? Tool_calls { get; set; }
+}
+
+// Yksittäinen tool call -kutsu LLM:n vastauksessa.
+public class AzureToolCall
+{
+    public string Id { get; set; } = string.Empty;
+    public string Type { get; set; } = "function";
+    public AzureFunctionCall Function { get; set; } = new();
+}
+
+// Tool callin funktio-osa: nimi ja argumentit JSON-merkkijonona.
+public class AzureFunctionCall
+{
+    public string Name { get; set; } = string.Empty;
+    public string Arguments { get; set; } = string.Empty;
+}
+
+// GetRawCompletionAsync:n palauttama raaka vastaus — sisältää finish_reason:n,
+// sisällön tai tool_calls:n sekä token-kulutuksen.
+public class AzureRawCompletion
+{
+    public string FinishReason { get; set; } = string.Empty;
+    public string? Content { get; set; }
+    public List<AzureToolCall>? ToolCalls { get; set; }
+    public AzureUsage? Usage { get; set; }
+    public string Model { get; set; } = string.Empty;
 }

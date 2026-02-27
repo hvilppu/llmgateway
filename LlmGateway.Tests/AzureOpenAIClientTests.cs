@@ -56,6 +56,34 @@ public class AzureOpenAIClientTests
     private static HttpResponseMessage ErrorResponse(HttpStatusCode statusCode) =>
         new(statusCode) { Content = new StringContent("error", Encoding.UTF8, "application/json") };
 
+    private static HttpResponseMessage ToolCallResponse(string toolCallId = "call-1", string functionName = "query_database", string arguments = "{\"sql\":\"SELECT 1\"}") =>
+        new(HttpStatusCode.OK)
+        {
+            Content = new StringContent($$"""
+            {
+                "id": "cmpl-456",
+                "model": "gpt-4",
+                "choices": [{
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": null,
+                        "tool_calls": [{
+                            "id": "{{toolCallId}}",
+                            "type": "function",
+                            "function": {
+                                "name": "{{functionName}}",
+                                "arguments": "{{arguments}}"
+                            }
+                        }]
+                    },
+                    "finish_reason": "tool_calls"
+                }],
+                "usage": { "prompt_tokens": 20, "completion_tokens": 10, "total_tokens": 30 }
+            }
+            """, Encoding.UTF8, "application/json")
+        };
+
     [Fact]
     public async Task GetChatCompletion_WhenCircuitBreakerOpen_ThrowsCircuitBreakerOpenException()
     {
@@ -133,6 +161,59 @@ public class AzureOpenAIClientTests
 
         Assert.Equal(3, handler.CallCount);
         Assert.Equal(4, cb.FailureCount); // 3 from IsTransient-branch + 1 from outer catch
+    }
+
+    // ===== GetRawCompletionAsync =====
+
+    [Fact]
+    public async Task GetRawCompletion_StopResponse_ReturnsFinishReasonStop()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(SuccessResponse("Vastaus"));
+        var cb = new FakeCircuitBreaker();
+        var client = CreateClient(handler, cb);
+
+        var messages = new List<object> { new { role = "user", content = "Hei" } };
+        var result = await client.GetRawCompletionAsync(messages, null, "gpt4oMini");
+
+        Assert.Equal("stop", result.FinishReason);
+        Assert.Equal("Vastaus", result.Content);
+        Assert.Null(result.ToolCalls);
+        Assert.Equal("gpt-4", result.Model);
+        Assert.Equal(15, result.Usage?.Total_tokens);
+    }
+
+    [Fact]
+    public async Task GetRawCompletion_ToolCallResponse_ReturnsToolCalls()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(ToolCallResponse("call-1", "query_database", "{\\\"sql\\\":\\\"SELECT 1\\\"}"));
+        var cb = new FakeCircuitBreaker();
+        var client = CreateClient(handler, cb);
+
+        var messages = new List<object> { new { role = "user", content = "Laske keskiarvo" } };
+        var result = await client.GetRawCompletionAsync(messages, null, "gpt4oMini");
+
+        Assert.Equal("tool_calls", result.FinishReason);
+        Assert.Null(result.Content);
+        Assert.NotNull(result.ToolCalls);
+        Assert.Single(result.ToolCalls!);
+        Assert.Equal("call-1", result.ToolCalls![0].Id);
+        Assert.Equal("query_database", result.ToolCalls[0].Function.Name);
+    }
+
+    [Fact]
+    public async Task GetRawCompletion_WhenCircuitBreakerOpen_ThrowsCircuitBreakerOpenException()
+    {
+        var handler = new FakeHttpMessageHandler();
+        var cb = new FakeCircuitBreaker { IsOpenResult = true };
+        var client = CreateClient(handler, cb);
+
+        var messages = new List<object> { new { role = "user", content = "test" } };
+        await Assert.ThrowsAsync<CircuitBreakerOpenException>(() =>
+            client.GetRawCompletionAsync(messages, null, "gpt4oMini"));
+
+        Assert.Equal(0, handler.CallCount);
     }
 
     [Fact]

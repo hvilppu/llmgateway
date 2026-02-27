@@ -129,4 +129,40 @@ public class RoutingEngineTests
         // ResolveModelKey must still return only the primary model
         Assert.Equal("gpt4", engine.ResolveModelKey(new ChatRequest { Policy = "critical" }));
     }
+
+    // ===== IsToolsEnabled =====
+
+    [Fact]
+    public void IsToolsEnabled_PolicyWithToolsEnabled_ReturnsTrue()
+    {
+        var policies = new Dictionary<string, PolicyConfig>
+        {
+            { "chat_default", new PolicyConfig { PrimaryModel = "gpt4oMini" } },
+            { "tools",        new PolicyConfig { PrimaryModel = "gpt4", ToolsEnabled = true } }
+        };
+        var engine = Create(policies);
+
+        Assert.True(engine.IsToolsEnabled(new ChatRequest { Policy = "tools" }));
+    }
+
+    [Fact]
+    public void IsToolsEnabled_PolicyWithToolsDisabled_ReturnsFalse()
+    {
+        var engine = Create(DefaultPolicies()); // chat_default has ToolsEnabled=false by default
+        Assert.False(engine.IsToolsEnabled(new ChatRequest { Policy = "chat_default" }));
+    }
+
+    [Fact]
+    public void IsToolsEnabled_NullPolicy_UsesDefault_ReturnsFalse()
+    {
+        var engine = Create(DefaultPolicies());
+        Assert.False(engine.IsToolsEnabled(new ChatRequest { Policy = null }));
+    }
+
+    [Fact]
+    public void IsToolsEnabled_UnknownPolicy_FallsBackToDefault_ReturnsFalse()
+    {
+        var engine = Create(DefaultPolicies());
+        Assert.False(engine.IsToolsEnabled(new ChatRequest { Policy = "unknown" }));
+    }
 }

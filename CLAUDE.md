@@ -6,12 +6,14 @@ ASP.NET Core (.NET 10) minimal API gateway Azure OpenAI -palvelulle.
 
 ```
 Program.cs                DI-rekisteröinnit, middleware-pipeline
-ChatEndpoints.cs          POST /api/chat endpoint (extension method)
-AzureOpenAIClient.cs      IAzureOpenAIClient + toteutus (retry, circuit breaker)
+ChatEndpoints.cs          POST /api/chat endpoint — yksinkertainen + agenttiloop (function calling)
+AzureOpenAIClient.cs      IAzureOpenAIClient + toteutus (retry, circuit breaker, GetRawCompletionAsync)
 AzureOpenAIOptions.cs     Konfiguraatio-optiot (oma tiedosto)
 CircuitBreaker.cs         ICircuitBreaker, InMemoryCircuitBreaker, CircuitBreakerOptions
 Routing.cs                IRoutingEngine, RoutingEngine, PolicyOptions, PolicyConfig
-Models/Models.cs          ChatRequest, ChatResponse, UsageInfo, Azure-vastausmallit
+RagService.cs             IRagService, CosmosRagService, CosmosRagOptions (vektorihaku)
+QueryService.cs           IQueryService, CosmosQueryService (Text-to-NoSQL, SELECT-only)
+Models/Models.cs          ChatRequest, ChatResponse, UsageInfo, Azure-vastausmallit + tool calling -mallit
 ```
 
 ## Teknologiat
@@ -33,6 +35,7 @@ Models/Models.cs          ChatRequest, ChatResponse, UsageInfo, Azure-vastausmal
   "TimeoutMs": 15000,
   "MaxRetries": 2,
   "RetryDelayMs": 500,
+  "EmbeddingDeployment": "text-embedding-3-small",
   "Deployments": {
     "gpt4": "YOUR-GPT4-DEPLOYMENT-NAME",
     "gpt4oMini": "YOUR-GPT4O-MINI-DEPLOYMENT-NAME"
@@ -40,7 +43,16 @@ Models/Models.cs          ChatRequest, ChatResponse, UsageInfo, Azure-vastausmal
 },
 "Policies": {
   "chat_default": { "PrimaryModel": "gpt4oMini" },
-  "critical":     { "PrimaryModel": "gpt4" }
+  "critical":     { "PrimaryModel": "gpt4" },
+  "tools":        { "PrimaryModel": "gpt4", "ToolsEnabled": true }
+},
+"CosmosRag": {
+  "ConnectionString": "AccountEndpoint=...",
+  "DatabaseName": "mydb",
+  "ContainerName": "documents",
+  "TopK": 5,
+  "VectorField": "embedding",
+  "ContentField": "content"
 },
 "CircuitBreaker": {
   "FailureThreshold": 5,
@@ -50,12 +62,13 @@ Models/Models.cs          ChatRequest, ChatResponse, UsageInfo, Azure-vastausmal
 
 ## Policy-pohjainen routing
 
-`ChatRequest.Policy` määrittää käytettävän mallin:
-- `null` / puuttuu → `chat_default` → `gpt4oMini`
-- `"critical"` → `gpt4`
+`ChatRequest.Policy` määrittää käytettävän mallin ja toimintatavan:
+- `null` / puuttuu → `chat_default` → `gpt4oMini`, yksinkertainen kutsu
+- `"critical"` → `gpt4`, yksinkertainen kutsu fallback-ketjulla
+- `"tools"` → `gpt4`, function calling -agenttiloop (search_documents + query_database)
 
-`RoutingEngine.ResolveModelKey` hakee policyn konfigista ja palauttaa `modelKey`:n.
-`AzureOpenAIClient` hakee `modelKey`:llä `deploymentName`:n ja tekee kutsun.
+`RoutingEngine.ResolveModelChain` palauttaa [primary, fallback1, ...] -listan.
+`RoutingEngine.IsToolsEnabled` kertoo aktivoiko policy agenttilooppin.
 
 ## Resilientti kutsulogiikka (AzureOpenAIClient)
 
@@ -83,46 +96,34 @@ Models/Models.cs          ChatRequest, ChatResponse, UsageInfo, Azure-vastausmal
 
 ```bash
 # chat_default policy (gpt4oMini)
-curl -X POST http://localhost:5079/api/chat \
-  -H "Content-Type: application/json" \
-  -d "{\"message\": \"Hei\"}"
+curl -X POST http://localhost:5079/api/chat -H "Content-Type: application/json" -d "{\"message\": \"Hei\"}"
 
 # critical policy (gpt4)
-curl -X POST http://localhost:5079/api/chat \
-  -H "Content-Type: application/json" \
-  -d "{\"message\": \"Analysoi tämä\", \"policy\": \"critical\"}"
+curl -X POST http://localhost:5079/api/chat -H "Content-Type: application/json" -d "{\"message\": \"Analysoi tämä\", \"policy\": \"critical\"}"
+
+# tools policy — LLM valitsee itse search_documents tai query_database
+curl -X POST http://localhost:5079/api/chat -H "Content-Type: application/json" -d "{\"message\": \"Mikä oli lämpötilan keskiarvo Helsingissä helmikuussa 2025?\", \"policy\": \"tools\"}"
 ```
 
 OpenAPI-schema: `http://localhost:5079/openapi/v1.json`
 
 
-## Flow (Päivitä ohjelman edistyessä)
-1. Pyyntö saapuu                                                                                                                      POST /api/chat                                                                                                                      
-  { "message": "Kerro vitsi", "policy": "critical" }                                                                                                                                                                                                                        
-  2. ChatEndpoints.cs — endpoint ottaa pyynnön vastaan
-  - ASP.NET Core deserializoi JSON:n ChatRequest-objektiksi
-  - Luodaan requestId (httpContext.TraceIdentifier)
-  - Lokitetaan pyyntö
+## Flow
 
-  3. RoutingEngine.ResolveModelKey — valitaan malli
-  - Luetaan request.Policy → "critical"
-  - Haetaan Policies["critical"] konfigista → PrimaryModel = "gpt4"
-  - Palautetaan "gpt4"
+### Yksinkertainen kutsu (policy: "chat_default" tai "critical")
+1. POST /api/chat `{ "message": "Kerro vitsi", "policy": "critical" }`
+2. `ChatEndpoints` → `RoutingEngine.ResolveModelChain` → `["gpt4"]`
+3. `IsToolsEnabled` → false → `HandleSimpleAsync`
+4. `AzureOpenAIClient.GetChatCompletionAsync` — circuit breaker + retry
+5. Vastaus: `{ "reply": "...", "model": "gpt-4", "usage": {...}, "requestId": "..." }`
 
-  4. AzureOpenAIClient.GetChatCompletionAsync — tehdään kutsu
-  - Tarkistetaan circuit breaker: IsOpen("gpt4") → false → jatketaan
-  - Haetaan Deployments["gpt4"] → oikea Azure deployment name
-  - Rakennetaan HTTP POST Azure OpenAI REST API:lle
-  - Per-kutsu timeout käynnistetään (CancelAfter(15000))
-
-  5. Azure OpenAI vastaa
-  - Onnistui → RecordSuccess("gpt4"), palautetaan ChatResponse
-  - Epäonnistui (429/5xx) → RecordFailure("gpt4"), retry viiveen jälkeen
-
-  6. Vastaus takaisin asiakkaalle
-  {
-    "reply": "Miksi ohjelmoija ei pidä luonnosta? Koska siellä on liikaa ötököitä (bugeja). Olipas hyvä vitsi!.",
-    "model": "gpt-4",
-    "usage": { "promptTokens": 12, "completionTokens": 24, "totalTokens": 36 },
-    "requestId": "0HN..."
-  }
+### Function calling -agenttiloop (policy: "tools")
+1. POST /api/chat `{ "message": "Mikä oli keskilämpötila Helsingissä helmikuussa?", "policy": "tools" }`
+2. `ChatEndpoints` → `IsToolsEnabled` → true → `HandleWithToolsAsync`
+3. Rakennetaan messages-lista + tool-määrittelyt (search_documents, query_database)
+4. `AzureOpenAIClient.GetRawCompletionAsync(messages, tools, "gpt4")`
+5. Azure palauttaa `finish_reason: "tool_calls"` → `query_database(sql="SELECT AVG(...)")`
+6. `CosmosQueryService.ExecuteQueryAsync(sql)` → JSON-tulokset
+7. Lisätään tool-tulos messages-listaan, loop uudelleen
+8. Azure palauttaa `finish_reason: "stop"` → lopullinen vastaus
+9. Vastaus: `{ "reply": "Helmikuussa 2025 keskilämpötila Helsingissä oli -3.2°C.", ... }`

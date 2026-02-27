@@ -13,7 +13,8 @@ public class PolicyOptions
 public class PolicyConfig
 {
     public string PrimaryModel { get; set; } = string.Empty;
-    public List<string>? Fallbacks { get; set; } // myöhemmin käytettäväksi
+    public List<string>? Fallbacks { get; set; }
+    public bool ToolsEnabled { get; set; } = false; // Aktivoi function calling -agenttiloop (search_documents + query_database)
 }
 
 // Rajapinta routing enginelle. Mahdollistaa mock-toteutuksen testeissä.
@@ -25,6 +26,9 @@ public interface IRoutingEngine
     // Palauttaa järjestetyn listan modelKey:stä: [primary, fallback1, fallback2, ...].
     // Tuntemattomat modelKey:t konfigista jätetään pois lokivaroituksella.
     IReadOnlyList<string> ResolveModelChain(ChatRequest request);
+
+    // Palauttaa true jos pyynnön policyn ToolsEnabled=true (function calling -agenttiloop).
+    bool IsToolsEnabled(ChatRequest request);
 }
 
 // Valitsee oikean modelKeyn pyynnön Policy-kentän ja appsettings-konfiguraation perusteella.
@@ -46,8 +50,15 @@ public class RoutingEngine : IRoutingEngine
         _logger = logger;
     }
 
-    // Palauttaa ensimmäisen modelKey:n ketjusta. Delegoi ResolveModelChain:lle.
     public string ResolveModelKey(ChatRequest request) => ResolveModelChain(request)[0];
+
+    public bool IsToolsEnabled(ChatRequest request)
+    {
+        var policyName = request.Policy ?? DefaultPolicy;
+        if (!_policyOptions.Policies.TryGetValue(policyName, out var policy))
+            policy = _policyOptions.Policies.GetValueOrDefault(DefaultPolicy);
+        return policy?.ToolsEnabled ?? false;
+    }
 
     public IReadOnlyList<string> ResolveModelChain(ChatRequest request)
     {

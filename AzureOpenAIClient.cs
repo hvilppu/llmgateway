@@ -9,7 +9,18 @@ namespace LlmGateway;
 // Rajapinta mahdollistaa mock-toteutuksen testeissä.
 public interface IAzureOpenAIClient
 {
-    Task<ChatResponse> GetChatCompletionAsync(ChatRequest request, string requestId, string modelKey, CancellationToken cancellationToken = default);
+    Task<ChatResponse> GetChatCompletionAsync(ChatRequest request, string requestId, string modelKey, string? ragContext = null, CancellationToken cancellationToken = default);
+    Task<float[]> GetEmbeddingAsync(string text, CancellationToken cancellationToken = default);
+
+    // Raaka chat completion -kutsu function calling -agenttilooppia varten.
+    // messages: koko viestihistoria (role+content+tool_calls+tool_call_id).
+    // tools: tool-määrittelyt JSON-objekteina (voi olla null).
+    // Palauttaa AzureRawCompletion josta finish_reason kertoo onko vastaus valmis vai tarvitaanko tool calls.
+    Task<AzureRawCompletion> GetRawCompletionAsync(
+        IReadOnlyList<object> messages,
+        IReadOnlyList<object>? tools,
+        string modelKey,
+        CancellationToken cancellationToken = default);
 }
 
 // Lähettää pyynnöt Azure OpenAI:lle. Sisältää retry-logiikan, per-kutsu timeoutin
@@ -46,7 +57,7 @@ public class AzureOpenAIClient : IAzureOpenAIClient
     // Lähettää chat-pyynnön Azure OpenAI:lle. Tarkistaa circuit breakerin ensin,
     // sen jälkeen yrittää kutsua MaxRetries kertaa transienttien virheiden sattuessa.
     // Heittää CircuitBreakerOpenException jos piiri on auki, HttpRequestException muuten.
-    public async Task<ChatResponse> GetChatCompletionAsync(ChatRequest request, string requestId, string modelKey, CancellationToken cancellationToken = default)
+    public async Task<ChatResponse> GetChatCompletionAsync(ChatRequest request, string requestId, string modelKey, string? ragContext = null, CancellationToken cancellationToken = default)
     {
         // Haetaan Azure-deploymentName modelKeyn perusteella konfigista
         if (!_options.Deployments.TryGetValue(modelKey, out var deploymentName))
@@ -68,12 +79,20 @@ public class AzureOpenAIClient : IAzureOpenAIClient
 
         var url = $"/openai/deployments/{deploymentName}/chat/completions?api-version={_options.ApiVersion}";
 
-        var payload = new
-        {
-            messages = new[]
+        var messages = ragContext is not null
+            ? new object[]
+            {
+                new { role = "system", content = $"Use the following context to answer the question. If the context does not contain enough information, say so.\n\nContext:\n{ragContext}" },
+                new { role = "user",   content = request.Message }
+            }
+            : new object[]
             {
                 new { role = "user", content = request.Message }
-            },
+            };
+
+        var payload = new
+        {
+            messages,
             temperature = 0.2,
             max_tokens = 512
         };
@@ -191,6 +210,146 @@ public class AzureOpenAIClient : IAzureOpenAIClient
         }
 
         throw lastException ?? new Exception("Azure OpenAI request failed with unknown error");
+    }
+
+    // Raaka chat completion -kutsu function calling -agenttilooppia varten.
+    // Käyttää samaa retry/circuit-breaker -logiikkaa kuin GetChatCompletionAsync.
+    public async Task<AzureRawCompletion> GetRawCompletionAsync(
+        IReadOnlyList<object> messages,
+        IReadOnlyList<object>? tools,
+        string modelKey,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_options.Deployments.TryGetValue(modelKey, out var deploymentName))
+            throw new InvalidOperationException($"Unknown modelKey '{modelKey}' for AzureOpenAI");
+
+        if (_circuitBreaker.IsOpen(modelKey))
+        {
+            _logger.LogWarning("Circuit breaker is OPEN, rejecting raw request for {ModelKey}", modelKey);
+            throw new CircuitBreakerOpenException(modelKey);
+        }
+
+        var url = $"/openai/deployments/{deploymentName}/chat/completions?api-version={_options.ApiVersion}";
+
+        var payloadObj = tools is { Count: > 0 }
+            ? (object)new { messages, tools, temperature = 0.2, max_tokens = 1024 }
+            : new { messages, temperature = 0.2, max_tokens = 1024 };
+
+        var json = JsonSerializer.Serialize(payloadObj, JsonOptions);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        Exception? lastException = null;
+
+        for (int attempt = 0; attempt <= _options.MaxRetries; attempt++)
+        {
+            try
+            {
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                cts.CancelAfter(_options.TimeoutMs);
+
+                var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+                using var response = await _httpClient.PostAsync(url, content, cts.Token);
+                stopwatch.Stop();
+
+                var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning(
+                        "Azure OpenAI non-success (raw). StatusCode={StatusCode}, LatencyMs={Latency}",
+                        (int)response.StatusCode, stopwatch.ElapsedMilliseconds);
+
+                    if (IsTransient(response.StatusCode))
+                    {
+                        _circuitBreaker.RecordFailure(modelKey);
+                        if (attempt < _options.MaxRetries)
+                        {
+                            await Task.Delay(TimeSpan.FromMilliseconds(_options.RetryDelayMs * (attempt + 1)), cancellationToken);
+                            continue;
+                        }
+                    }
+                    else
+                    {
+                        _circuitBreaker.RecordFailure(modelKey);
+                    }
+
+                    throw new HttpRequestException($"Azure OpenAI error: {(int)response.StatusCode} {response.ReasonPhrase}");
+                }
+
+                _logger.LogInformation("Azure OpenAI raw call succeeded. LatencyMs={Latency}", stopwatch.ElapsedMilliseconds);
+
+                var completion = JsonSerializer.Deserialize<AzureChatCompletionResponse>(responseBody, JsonOptions)
+                                 ?? throw new InvalidOperationException("Failed to deserialize Azure OpenAI response");
+
+                var choice = completion.Choices.FirstOrDefault();
+                _circuitBreaker.RecordSuccess(modelKey);
+
+                return new AzureRawCompletion
+                {
+                    FinishReason = choice?.Finish_reason ?? "stop",
+                    Content = choice?.Message?.Content,
+                    ToolCalls = choice?.Message?.Tool_calls,
+                    Usage = completion.Usage,
+                    Model = completion.Model
+                };
+            }
+            catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                lastException = ex;
+                _circuitBreaker.RecordFailure(modelKey);
+                if (attempt < _options.MaxRetries)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(_options.RetryDelayMs * (attempt + 1)), cancellationToken);
+                    continue;
+                }
+                break;
+            }
+            catch (Exception ex)
+            {
+                lastException = ex;
+                _circuitBreaker.RecordFailure(modelKey);
+                if (attempt < _options.MaxRetries && IsTransientException(ex))
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(_options.RetryDelayMs * (attempt + 1)), cancellationToken);
+                    continue;
+                }
+                break;
+            }
+        }
+
+        throw lastException ?? new Exception("Azure OpenAI raw request failed with unknown error");
+    }
+
+    // Generoi embedding-vektori annetulle tekstille Azure OpenAI Embeddings API:lla.
+    // Käytetään RAG-haussa: tekstistä luodaan vektori, jolla haetaan Cosmos DB:stä lähimmät dokumentit.
+    public async Task<float[]> GetEmbeddingAsync(string text, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(_options.EmbeddingDeployment))
+            throw new InvalidOperationException("AzureOpenAI:EmbeddingDeployment is not configured");
+
+        var url = $"/openai/deployments/{_options.EmbeddingDeployment}/embeddings?api-version={_options.ApiVersion}";
+        var payload = new { input = text };
+        var json = JsonSerializer.Serialize(payload, JsonOptions);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(_options.TimeoutMs);
+
+        using var response = await _httpClient.PostAsync(url, content, cts.Token);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+            throw new HttpRequestException($"Embedding API error: {(int)response.StatusCode} {response.ReasonPhrase}");
+
+        using var doc = JsonDocument.Parse(body);
+        var values = doc.RootElement
+            .GetProperty("data")[0]
+            .GetProperty("embedding")
+            .EnumerateArray()
+            .Select(e => e.GetSingle())
+            .ToArray();
+
+        return values;
     }
 
     // 408 Timeout, 429 Rate limit ja 5xx ovat tilapäisiä — kannattaa yrittää uudelleen.

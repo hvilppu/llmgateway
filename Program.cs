@@ -1,4 +1,6 @@
 using LlmGateway;
+using Microsoft.Azure.Cosmos;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,6 +17,17 @@ builder.Services.Configure<PolicyOptions>(options =>
             s => s.Key,
             s => s.Get<PolicyConfig>() ?? new PolicyConfig());
 });
+
+// RAG — Cosmos DB vektorihaulla
+builder.Services.Configure<CosmosRagOptions>(
+    builder.Configuration.GetSection("CosmosRag"));
+builder.Services.AddSingleton<CosmosClient>(sp =>
+{
+    var opts = sp.GetRequiredService<IOptions<CosmosRagOptions>>().Value;
+    return new CosmosClient(opts.ConnectionString);
+});
+builder.Services.AddSingleton<IRagService, CosmosRagService>();
+builder.Services.AddSingleton<IQueryService, CosmosQueryService>();
 
 // Circuit breaker — singleton jotta tila säilyy kutsujen välillä
 builder.Services.AddSingleton<ICircuitBreaker, InMemoryCircuitBreaker>();
