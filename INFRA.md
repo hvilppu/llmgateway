@@ -32,7 +32,29 @@ az cognitiveservices account deployment create --name my-openai-resource --resou
 az cognitiveservices account deployment create --name my-openai-resource --resource-group rg-llmgateway-prod --deployment-name text-embedding-3-small --model-name text-embedding-3-small --model-version "1" --model-format OpenAI --sku-capacity 10 --sku-name Standard
 ```
 
-### 3. Päivitä `infra/main.bicepparam`
+### 3. Luo Cosmos DB (RAG + Text-to-NoSQL)
+
+Luo tili:
+```bash
+az cosmosdb create --name my-cosmos-account --resource-group rg-llmgateway-prod --kind GlobalDocumentDB --locations regionName=swedencentral
+```
+
+Luo tietokanta:
+```bash
+az cosmosdb sql database create --account-name my-cosmos-account --resource-group rg-llmgateway-prod --name ragdb
+```
+
+Luo container:
+```bash
+az cosmosdb sql container create --account-name my-cosmos-account --resource-group rg-llmgateway-prod --database-name ragdb --name documents --partition-key-path "/id"
+```
+
+Hae connection string (tarvitaan bicepparam + pipeline secret):
+```bash
+az cosmosdb keys list --name my-cosmos-account --resource-group rg-llmgateway-prod --type connection-strings --query "connectionStrings[0].connectionString" --output tsv
+```
+
+### 4. Päivitä `infra/main.bicepparam`
 
 ```
 param appName                 = 'xyz-llmgateway-prod'           # oltava globaalisti uniikki

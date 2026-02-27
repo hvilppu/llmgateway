@@ -7,31 +7,9 @@ public static class ChatEndpoints
     private const int MaxToolIterations = 5;
 
     private const string SystemPrompt =
-        "Olet avulias assistentti. Vastaa suomeksi. Sinulla on käytettävissä kaksi työkalua:\n" +
-        "- search_documents: hae semanttisesti relevantteja dokumentteja (käytä selittäviin kysymyksiin)\n" +
-        "- query_database: suorita Cosmos DB SQL -kysely (käytä aggregointiin: keskiarvot, summat, määrät)\n" +
-        "Valitse aina paras työkalu kysymyksen perusteella.";
-
-    // Tool-määrittelyt JSON-objekteina Azure OpenAI Tools API:lle
-    private static readonly object SearchDocumentsTool = new
-    {
-        type = "function",
-        function = new
-        {
-            name = "search_documents",
-            description = "Hakee semanttisesti relevantteja dokumentteja tietokannasta vektorihaulla. " +
-                          "Käytä kun kysymys vaatii selittämistä, taustatietoa tai dokumenttien hakua.",
-            parameters = new
-            {
-                type = "object",
-                properties = new
-                {
-                    query = new { type = "string", description = "Hakutermi tai luonnollisen kielen kysymys" }
-                },
-                required = new[] { "query" }
-            }
-        }
-    };
+        "Olet avulias assistentti. Vastaa suomeksi. Sinulla on käytettävissä työkalu:\n" +
+        "- query_database: suorita Cosmos DB SQL -kysely (käytä aggregointiin: keskiarvot, summat, määrät, suodatus)\n" +
+        "Käytä työkalua aina kun kysymys koskee dataa.";
 
     private static readonly object QueryDatabaseTool = new
     {
@@ -63,7 +41,7 @@ public static class ChatEndpoints
         }
     };
 
-    private static readonly object[] Tools = [SearchDocumentsTool, QueryDatabaseTool];
+    private static readonly object[] Tools = [QueryDatabaseTool];
 
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web)
     {
@@ -100,7 +78,7 @@ public static class ChatEndpoints
                 if (routingEngine.IsToolsEnabled(request))
                 {
                     return await HandleWithToolsAsync(
-                        request, requestId, modelChain, client, ragService, queryService, logger, cancellationToken);
+                        request, requestId, modelChain, client, queryService, logger, cancellationToken);
                 }
                 else
                 {
@@ -183,7 +161,6 @@ public static class ChatEndpoints
         string requestId,
         IReadOnlyList<string> modelChain,
         IAzureOpenAIClient client,
-        IRagService ragService,
         IQueryService queryService,
         ILogger logger,
         CancellationToken cancellationToken)
@@ -195,7 +172,7 @@ public static class ChatEndpoints
             try
             {
                 var result = await RunAgentLoopAsync(
-                    request, requestId, modelKey, client, ragService, queryService, logger, cancellationToken);
+                    request, requestId, modelKey, client, queryService, logger, cancellationToken);
                 return result;
             }
             catch (CircuitBreakerOpenException ex)
@@ -231,7 +208,6 @@ public static class ChatEndpoints
         string requestId,
         string modelKey,
         IAzureOpenAIClient client,
-        IRagService ragService,
         IQueryService queryService,
         ILogger logger,
         CancellationToken cancellationToken)
@@ -283,7 +259,7 @@ public static class ChatEndpoints
                     string toolResult;
                     try
                     {
-                        toolResult = await ExecuteToolAsync(tc, ragService, queryService, logger, cancellationToken);
+                        toolResult = await ExecuteToolAsync(tc, queryService, logger, cancellationToken);
                     }
                     catch (Exception ex)
                     {
@@ -314,7 +290,6 @@ public static class ChatEndpoints
 
     private static async Task<string> ExecuteToolAsync(
         AzureToolCall tc,
-        IRagService ragService,
         IQueryService queryService,
         ILogger logger,
         CancellationToken cancellationToken)
@@ -324,11 +299,6 @@ public static class ChatEndpoints
 
         return tc.Function.Name switch
         {
-            "search_documents" => await ragService.RetrieveContextAsync(
-                args.GetProperty("query").GetString()
-                    ?? throw new InvalidOperationException("search_documents: 'query' argument missing"),
-                cancellationToken),
-
             "query_database" => await queryService.ExecuteQueryAsync(
                 args.GetProperty("sql").GetString()
                     ?? throw new InvalidOperationException("query_database: 'sql' argument missing"),

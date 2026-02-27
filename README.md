@@ -25,3 +25,15 @@ curl -X POST https://llmgateway-prod.azurewebsites.net/api/chat -H "Content-Type
 ```bash
 curl -X POST https://llmgateway-prod.azurewebsites.net/api/chat -H "Content-Type: application/json" -H "X-Api-Key: YOUR-API-KEY" -d "{\"message\": \"Selitä miksi lämpötila vaihtelee vuodenajan mukaan\", \"policy\": \"tools\"}"
 ```
+
+
+
+# Myöhemmin
+
+RAG:in myöhemmin käyttöön, tarvitaan:
+  1. Container uudelleen vektori-indeksillä (poistettu     
+  komento palautetaan)
+  2. Dokumenttien indeksointi — ajaa embedding-API:n       
+  jokaiselle dokumentille ja tallentaa embedding-kenttään 
+
+Toinen lähde kuten TableContainer
