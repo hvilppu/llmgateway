@@ -65,6 +65,7 @@ API-avain löytyy: **Azure Portal → Azure OpenAI -resurssi → Keys and Endpoi
 | Tyyppi   | Nimi                           | Arvo                                                    |
 |----------|--------------------------------|---------------------------------------------------------|
 | Secret   | `AZURE_WEBAPP_PUBLISH_PROFILE` | Azure Portal → App Service → Get publish profile        |
+| Secret   | `GATEWAY_API_KEY`              | Itse generoitu avain — asiakkaat lähettävät `X-Api-Key` -headerissa |
 | Secret   | `AZURE_OPENAI_API_KEY`         | Azure Portal → Azure OpenAI → Keys and Endpoint → KEY 1 |
 | Secret   | `AZURE_COSMOS_CONNECTION_STRING` | Azure Portal → Cosmos DB → Keys → PRIMARY CONNECTION STRING |
 | Secret   | `AZURE_CLIENT_ID`              | Service principal (infra.yml)                           |
@@ -82,7 +83,7 @@ Push `main`-haaraan → `deploy.yml` käynnistyy automaattisesti.
 ## Testaus
 
 ```bash
-curl -X POST https://llmgateway-prod.azurewebsites.net/api/chat -H "Content-Type: application/json" -d "{\"message\": \"Hei\"}"
+curl -X POST https://llmgateway-prod.azurewebsites.net/api/chat -H "Content-Type: application/json" -H "X-Api-Key: YOUR-API-KEY" -d "{\"message\": \"Hei\"}"
 ```
 
 ```bash

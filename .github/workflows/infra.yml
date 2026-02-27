@@ -5,6 +5,7 @@
 #   Secrets : AZURE_CLIENT_ID              (service principal / OIDC)
 #             AZURE_TENANT_ID
 #             AZURE_SUBSCRIPTION_ID
+#             GATEWAY_API_KEY             (X-Api-Key -headerin arvo, ei koskaan params-tiedostoon)
 #             AZURE_OPENAI_API_KEY         (ei koskaan params-tiedostoon)
 #             AZURE_COSMOS_CONNECTION_STRING (ei koskaan params-tiedostoon)
 #   Variables: AZURE_RESOURCE_GROUP  (esim. rg-llmgateway-prod)
@@ -54,6 +55,7 @@ jobs:
             --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
             --template-file infra/main.bicep \
             --parameters infra/main.bicepparam \
+            --parameters gatewayApiKey=${{ secrets.GATEWAY_API_KEY }} \
             --parameters azureOpenAIApiKey=${{ secrets.AZURE_OPENAI_API_KEY }} \
             --parameters cosmosConnectionString=${{ secrets.AZURE_COSMOS_CONNECTION_STRING }} \
             --output table

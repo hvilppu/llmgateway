@@ -7,6 +7,7 @@ param appName              = 'xyz-llmgateway-prod'       // muuta yksilölliseks
 param location             = 'swedencentral'
 param sku                  = 'B1'
 
+param gatewayApiKey        = ''  // EI täytetä tähän — tulee pipeline-secretistä (GATEWAY_API_KEY)
 param azureOpenAIApiKey    = ''  // EI täytetä tähän — tulee pipeline-secretistä (AZURE_OPENAI_API_KEY)
 
 param azureOpenAIEndpoint  = 'https://swedencentral.api.cognitive.microsoft.com/'

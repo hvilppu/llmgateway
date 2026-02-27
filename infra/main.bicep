@@ -17,6 +17,10 @@ param sku string = 'B1'
 param azureOpenAIEndpoint string
 
 @secure()
+@description('Gateway API key. Clients must send this in X-Api-Key header. Pass via --parameters or pipeline secret.')
+param gatewayApiKey string
+
+@secure()
 @description('Azure OpenAI API key. Pass via --parameters or pipeline secret — never store in params file.')
 param azureOpenAIApiKey string
 
@@ -110,6 +114,9 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
       // Sisäkkäiset JSON-avaimet erotetaan kahdella alaviivalla (__).
       appSettings: [
         { name: 'ASPNETCORE_ENVIRONMENT', value: 'Production' }
+
+        // API key auth
+        { name: 'ApiKey__Key', value: gatewayApiKey }
 
         // Azure OpenAI
         { name: 'AzureOpenAI__Endpoint',      value: azureOpenAIEndpoint }

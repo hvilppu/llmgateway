@@ -4,6 +4,10 @@ using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// API key auth
+builder.Services.Configure<ApiKeyOptions>(
+    builder.Configuration.GetSection("ApiKey"));
+
 // Bind options
 builder.Services.Configure<AzureOpenAIOptions>(
     builder.Configuration.GetSection("AzureOpenAI"));
@@ -58,6 +62,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseMiddleware<ApiKeyMiddleware>();
 
 app.MapChatEndpoints();
 
