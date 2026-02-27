@@ -3,7 +3,7 @@
 
 using './main.bicep'
 
-param appName              = 'xyz-llmgateway-prod'       // muuta yksilölliseksi
+param appName              = 'heikkis-llmgateway-prod'       // muuta yksilölliseksi
 param location             = 'swedencentral'
 param sku                  = 'B1'
 

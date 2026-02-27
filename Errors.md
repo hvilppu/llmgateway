@@ -1,0 +1,2 @@
+Could not load file or assembly 'Newtonsoft.Json, Version=10.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed'. The system cannot find the file specified.
+Problem Id:System.IO.FileNotFoundException at Microsoft.Azure.Cosmos.DocumentClient..ctor:0
