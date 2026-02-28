@@ -72,11 +72,25 @@ def read_cosmos_documents(conn_str: str, database: str, container: str) -> list[
 
 
 def extract_row(doc: dict) -> tuple | None:
-    """Poimii mittausriviin tarvittavat kentät dokumentista. Palauttaa None jos kentät puuttuvat."""
-    doc_id      = doc.get("id")
-    paikkakunta = doc.get("paikkakunta")
-    pvm         = doc.get("pvm")
-    lampotila   = doc.get("lampotila")
+    """Poimii mittausriviin tarvittavat kentät dokumentista. Palauttaa None jos kentät puuttuvat.
+
+    Tukee kahta rakennetta:
+      - kentät ylätasolla: { id, paikkakunta, pvm, lampotila, ... }
+      - kentät content-objektissa: { id, content: { paikkakunta, pvm, lampotila }, ... }
+    """
+    doc_id = doc.get("id")
+
+    # Kokeile ensin ylätaso, sitten content-aliobjekti
+    source = doc
+    content = doc.get("content")
+    if isinstance(content, dict):
+        # content on objekti — käytä sitä kenttien lähteenä jos ylätasolta puuttuu
+        if doc.get("paikkakunta") is None:
+            source = content
+
+    paikkakunta = source.get("paikkakunta")
+    pvm         = source.get("pvm")
+    lampotila   = source.get("lampotila") or source.get("lämpötila")
 
     if any(v is None for v in (doc_id, paikkakunta, pvm, lampotila)):
         return None
