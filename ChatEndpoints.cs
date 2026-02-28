@@ -18,6 +18,9 @@ public static class ChatEndpoints
         "Vastaa suomeksi. Jos kysymys ei liity lämpötila- tai säädataan, kieltäydy kohteliaasti. " +
         "Sinulla on käytettävissä työkalu:\n" +
         "- query_database: suorita Cosmos DB SQL -kysely (käytä aggregointiin: keskiarvot, summat, määrät, suodatus)\n" +
+        "TÄRKEÄ RAJOITUS: Cosmos DB SQL ei tue ORDER BY:tä GROUP BY:n kanssa. " +
+        "Kun haet kylmintä tai lämpimintä kuukautta: hae KAIKKI kuukaudet GROUP BY:llä (ilman ORDER BY), " +
+        "katso palautetut kuukausikeskiarvot ja päättele itse mikä on pienin tai suurin. " +
         "Käytä työkalua aina kun kysymys koskee dataa.";
 
     // MS SQL -polun system prompt.
@@ -39,7 +42,10 @@ public static class ChatEndpoints
                           "Käytä aggregointiin (AVG, SUM, COUNT, MIN, MAX) ja suodatukseen. " +
                           "Tietokannan schema: c.id (string), c.content.paikkakunta (string), " +
                           "c.content.pvm (date string, esim. '2025-01-15'), c.content.lampotila (number). " +
-                          "Vain SELECT-kyselyt sallittu.",
+                          "Vain SELECT-kyselyt sallittu. " +
+                          "RAJOITUS: ORDER BY ei toimi GROUP BY:n kanssa — älä yhdistä niitä. " +
+                          "Kuukausittainen ryhmittely: GROUP BY SUBSTRING(c.content.pvm,0,7). " +
+                          "Ei MONTH()- tai YEAR()-funktiota — käytä STARTSWITH tai SUBSTRING päivämäärille.",
             parameters = new
             {
                 type = "object",
@@ -48,10 +54,13 @@ public static class ChatEndpoints
                     sql = new
                     {
                         type = "string",
-                        description = "Cosmos DB SQL SELECT -kysely. Esim: " +
-                                      "SELECT AVG(c.content.lampotila) as avg FROM c " +
-                                      "WHERE c.content.paikkakunta = 'Helsinki' " +
-                                      "AND STARTSWITH(c.content.pvm, '2025-02')"
+                        description = "Cosmos DB SQL SELECT -kysely. Esimerkkejä: " +
+                                      "1) Kuukausikeskiarvot (kylmin/lämpimin kuukausi): " +
+                                      "SELECT SUBSTRING(c.content.pvm,0,7) AS kk, AVG(c.content.lampotila) AS avg " +
+                                      "FROM c WHERE c.content.paikkakunta='Tampere' AND STARTSWITH(c.content.pvm,'2024') " +
+                                      "GROUP BY SUBSTRING(c.content.pvm,0,7) -- EI ORDER BY, päättele min/max itse tuloksista! " +
+                                      "2) Yksittäinen kuukausi: SELECT AVG(c.content.lampotila) AS avg FROM c " +
+                                      "WHERE c.content.paikkakunta='Helsinki' AND STARTSWITH(c.content.pvm,'2025-02')"
                     }
                 },
                 required = new[] { "sql" }
