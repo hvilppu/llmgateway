@@ -93,7 +93,7 @@ Vaikka `AVG` palauttaisi vain yhden luvun, jos käyttäjä kysyy useita asioita 
 
 ## Skaalautuuko usealle palvelininstanssille?
 
-### Pullonkaula 5 — In-memory circuit breaker ei toimi horisontaalisessa skaalauksessa 🔴
+### Pullonkaula 5 — In-memory circuit breaker ei toimi horisontaalisessa skaalauksessa (Ongelma isoissa järjestelmissä) 🔴
 
 `InMemoryCircuitBreaker` on `singleton` joka elää **yhden prosessin muistissa**. Azure App Service skaalaa lisäämällä instansseja — jokainen instanssi saa oman, toisistaan tietämättömän circuit breakerin.
 
