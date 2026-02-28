@@ -35,7 +35,14 @@ builder.Services.AddSingleton<CosmosClient>(sp =>
     return new CosmosClient(opts.ConnectionString);
 });
 builder.Services.AddSingleton<IRagService, CosmosRagService>();
-builder.Services.AddSingleton<IQueryService, CosmosQueryService>();
+
+// MS SQL -konfiguraatio
+builder.Services.Configure<SqlOptions>(
+    builder.Configuration.GetSection("Sql"));
+
+// Keyed IQueryService — molemmat aktiivisena samanaikaisesti
+builder.Services.AddKeyedSingleton<IQueryService, CosmosQueryService>("cosmos");
+builder.Services.AddKeyedSingleton<IQueryService, SqlQueryService>("mssql");
 
 // Circuit breaker — singleton jotta tila säilyy kutsujen välillä
 builder.Services.AddSingleton<ICircuitBreaker, InMemoryCircuitBreaker>();

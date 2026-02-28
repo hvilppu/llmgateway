@@ -15,6 +15,7 @@ public class PolicyConfig
     public string PrimaryModel { get; set; } = string.Empty;
     public List<string>? Fallbacks { get; set; }
     public bool ToolsEnabled { get; set; } = false; // Aktivoi function calling -agenttiloop (search_documents + query_database)
+    public string QueryBackend { get; set; } = "cosmos"; // "cosmos" | "mssql"
 }
 
 // Rajapinta routing enginelle. Mahdollistaa mock-toteutuksen testeissä.
@@ -29,6 +30,9 @@ public interface IRoutingEngine
 
     // Palauttaa true jos pyynnön policyn ToolsEnabled=true (function calling -agenttiloop).
     bool IsToolsEnabled(ChatRequest request);
+
+    // Palauttaa query-backendin nimen ("cosmos" tai "mssql") pyynnön policyn perusteella.
+    string GetQueryBackend(ChatRequest request);
 }
 
 // Valitsee oikean modelKeyn pyynnön Policy-kentän ja appsettings-konfiguraation perusteella.
@@ -58,6 +62,14 @@ public class RoutingEngine : IRoutingEngine
         if (!_policyOptions.Policies.TryGetValue(policyName, out var policy))
             policy = _policyOptions.Policies.GetValueOrDefault(DefaultPolicy);
         return policy?.ToolsEnabled ?? false;
+    }
+
+    public string GetQueryBackend(ChatRequest request)
+    {
+        var policyName = request.Policy ?? DefaultPolicy;
+        if (!_policyOptions.Policies.TryGetValue(policyName, out var policy))
+            policy = _policyOptions.Policies.GetValueOrDefault(DefaultPolicy);
+        return policy?.QueryBackend ?? "cosmos";
     }
 
     public IReadOnlyList<string> ResolveModelChain(ChatRequest request)

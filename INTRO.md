@@ -1,6 +1,6 @@
 # LlmGateway — Esittely
 
-LlmGateway on demo siitä, miten tekoäly voidaan kytkeä oikeaan tietokantaan niin, että tietokannalle voi esittää kysymyksiä **tavallisella suomen kielellä**.
+LlmGateway on demo siitä, miten tekoäly voidaan kytkeä oikeaan tietokantaan niin, että tietokannalle voi esittää kysymyksiä **tavallisella suomen kielellä**. Ja miten tehdään Cosmos → MS SQL -migraatio.
 
 ---
 
@@ -22,7 +22,7 @@ Demossa on Suomen kaupunkien lämpötiladataa. Käyttäjä lähettää esim. tek
 Kysymys:  "Mikä oli kylmin kuukausi Tampereella vuonna 2024?"
 
 Taustalla: gateway tunnistaa datakysymyksen → LLM muodostaa SQL-kyselyn
-           → Cosmos DB palauttaa tuloksen → LLM muotoilee vastauksen
+           → tietokanta palauttaa tuloksen → LLM muotoilee vastauksen
 
 Vastaus:  "Tampereen kylmin kuukausi vuonna 2024 oli tammikuu,
            jolloin keskilämpötila oli -8.4°C."
@@ -78,8 +78,20 @@ Tietokantaan kyseleminen luonnollisella kielellä ei ole uusi idea. LlmGateway d
 
 - **Kieli:** C# / .NET 10
 - **Tekoäly:** Azure OpenAI (GPT-4o ja GPT-4o-mini)
-- **Tietokanta:** Azure Cosmos DB
+- **Tietokannat:** Azure Cosmos DB (NoSQL, vektorihaku) ja Azure SQL / MS SQL Server (relaatio, T-SQL)
 - **Rajapinta:** yksinkertainen REST API — yksi endpoint, yksi JSON-viesti
+
+---
+
+## Demo-datan valmistelu — Cosmos → MS SQL -migraatio
+
+Demossa sama lämpötiladata voi elää kahdessa tietokannassa. Cosmos DB toimii RAG-haun ja NoSQL-kyselyjen pohjana; MS SQL mahdollistaa tarkat relaatiokyselyt (`tools_sql`-policy).
+
+Kun Azure-infra on provisionoitu, data siirretään Cosmoksesta MS SQL:ään yhdellä komennolla.
+
+Skripti lukee jokaisen dokumentin Cosmoksesta, poimii kentät `id`, `paikkakunta`, `pvm` ja `lampotila`, ja kirjoittaa ne MS SQL:n `mittaukset`-tauluun. Ajo on idempotentti — sen voi toistaa turvallisesti jos Cosmokseen tulee uutta dataa.
+
+Tarkempi ohje löytyy [INFRA.md](INFRA.md)-dokumentista (kohta 4b).
 
 ---
 

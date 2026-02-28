@@ -55,6 +55,18 @@ param cosmosContainerName string = 'documents'
 @description('Number of documents to retrieve per query.')
 param cosmosTopK int = 5
 
+// ── MS SQL ────────────────────────────────────────────────────────────────────
+
+@secure()
+@description('MS SQL Server admin password. Pass via pipeline secret (AZURE_SQL_ADMIN_PASSWORD).')
+param sqlAdminPassword string = ''
+
+@description('MS SQL Server admin login.')
+param sqlAdminLogin string = 'sqladmin'
+
+@description('MS SQL database name.')
+param sqlDatabaseName string = 'llmgateway'
+
 // ── Circuit Breaker ───────────────────────────────────────────────────────────
 
 param circuitBreakerFailureThreshold int = 5
@@ -135,12 +147,19 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'Policies__critical__Fallbacks__0',       value: 'gpt4oMini' }
         { name: 'Policies__tools__PrimaryModel',          value: 'gpt4' }
         { name: 'Policies__tools__ToolsEnabled',          value: 'true' }
+        { name: 'Policies__tools__QueryBackend',          value: 'cosmos' }
+        { name: 'Policies__tools_sql__PrimaryModel',      value: 'gpt4' }
+        { name: 'Policies__tools_sql__ToolsEnabled',      value: 'true' }
+        { name: 'Policies__tools_sql__QueryBackend',      value: 'mssql' }
 
         // Cosmos DB RAG
         { name: 'CosmosRag__ConnectionString', value: cosmosConnectionString }
         { name: 'CosmosRag__DatabaseName',     value: cosmosDatabaseName }
         { name: 'CosmosRag__ContainerName',    value: cosmosContainerName }
         { name: 'CosmosRag__TopK',             value: string(cosmosTopK) }
+
+        // MS SQL (tools_sql-policy)
+        { name: 'Sql__ConnectionString', value: 'Server=${sqlServer.properties.fullyQualifiedDomainName};Database=${sqlDatabaseName};User Id=${sqlAdminLogin};Password=${sqlAdminPassword};Encrypt=True;TrustServerCertificate=False;' }
 
         // Circuit Breaker
         { name: 'CircuitBreaker__FailureThreshold',      value: string(circuitBreakerFailureThreshold) }
@@ -151,6 +170,40 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'ApplicationInsightsAgent_EXTENSION_VERSION',   value: '~3' }
       ]
     }
+  }
+}
+
+// ── Azure SQL Server ──────────────────────────────────────────────────────────
+
+resource sqlServer 'Microsoft.Sql/servers@2023-08-01-preview' = {
+  name: '${appName}-sql'
+  location: location
+  properties: {
+    administratorLogin: sqlAdminLogin
+    administratorLoginPassword: sqlAdminPassword
+    // Sallii Azure-palveluiden yhteyden (esim. App Service)
+    publicNetworkAccess: 'Enabled'
+  }
+}
+
+// Salli Azure-sisäiset yhteydet (0.0.0.0 → 0.0.0.0 = Azure services firewall rule)
+resource sqlFirewallAzureServices 'Microsoft.Sql/servers/firewallRules@2023-08-01-preview' = {
+  parent: sqlServer
+  name: 'AllowAzureServices'
+  properties: {
+    startIpAddress: '0.0.0.0'
+    endIpAddress: '0.0.0.0'
+  }
+}
+
+// Basic-tier (~5 €/kk), 2 GB
+resource sqlDatabase 'Microsoft.Sql/servers/databases@2023-08-01-preview' = {
+  parent: sqlServer
+  name: sqlDatabaseName
+  location: location
+  sku: {
+    name: 'Basic'
+    tier: 'Basic'
   }
 }
 

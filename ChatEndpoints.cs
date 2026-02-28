@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using System.Text.Json;
 
 namespace LlmGateway;
@@ -6,20 +7,29 @@ public static class ChatEndpoints
 {
     private const int MaxToolIterations = 5;
 
-    // Tools-polun system prompt: rajoittaa LLM:n lämpötiladataan ja ohjaa käyttämään työkalua.
-    private const string SystemPrompt =
+    // Yksinkertaisen polun system prompt: rajoittaa aiheeseen ilman työkaluja.
+    private const string SimpleSystemPrompt =
+        "Olet assistentti joka vastaa AINOASTAAN Suomen kaupunkien lämpötila- ja säädataan liittyviin kysymyksiin. " +
+        "Vastaa suomeksi. Jos kysymys ei liity aiheeseen, kieltäydy kohteliaasti.";
+
+    // Cosmos DB -polun system prompt.
+    private const string CosmosSystemPrompt =
         "Olet assistentti joka vastaa AINOASTAAN Suomen kaupunkien lämpötila- ja säädataan liittyviin kysymyksiin. " +
         "Vastaa suomeksi. Jos kysymys ei liity lämpötila- tai säädataan, kieltäydy kohteliaasti. " +
         "Sinulla on käytettävissä työkalu:\n" +
         "- query_database: suorita Cosmos DB SQL -kysely (käytä aggregointiin: keskiarvot, summat, määrät, suodatus)\n" +
         "Käytä työkalua aina kun kysymys koskee dataa.";
 
-    // Yksinkertaisen polun system prompt: rajoittaa aiheeseen ilman työkaluja.
-    private const string SimpleSystemPrompt =
+    // MS SQL -polun system prompt.
+    private const string SqlSystemPrompt =
         "Olet assistentti joka vastaa AINOASTAAN Suomen kaupunkien lämpötila- ja säädataan liittyviin kysymyksiin. " +
-        "Vastaa suomeksi. Jos kysymys ei liity aiheeseen, kieltäydy kohteliaasti.";
+        "Vastaa suomeksi. Jos kysymys ei liity lämpötila- tai säädataan, kieltäydy kohteliaasti. " +
+        "Sinulla on käytettävissä työkalu:\n" +
+        "- query_database: suorita T-SQL SELECT -kysely MS SQL -tietokantaan (käytä aggregointiin: keskiarvot, summat, määrät, suodatus)\n" +
+        "Käytä työkalua aina kun kysymys koskee dataa.";
 
-    private static readonly object QueryDatabaseTool = new
+    // Cosmos DB -tool-kuvaus (NoSQL-syntaksi).
+    private static readonly object CosmosQueryDatabaseTool = new
     {
         type = "function",
         function = new
@@ -49,7 +59,38 @@ public static class ChatEndpoints
         }
     };
 
-    private static readonly object[] Tools = [QueryDatabaseTool];
+    // MS SQL -tool-kuvaus (T-SQL-syntaksi).
+    private static readonly object SqlQueryDatabaseTool = new
+    {
+        type = "function",
+        function = new
+        {
+            name = "query_database",
+            description = "Suorittaa T-SQL SELECT -kyselyn MS SQL -tietokannalle. " +
+                          "Käytä aggregointiin (AVG, SUM, COUNT, MIN, MAX) ja suodatukseen. " +
+                          "Taulu: mittaukset. Sarakkeet: id (NVARCHAR), paikkakunta (NVARCHAR), " +
+                          "pvm (DATE), lampotila (FLOAT). " +
+                          "Vain SELECT-kyselyt sallittu.",
+            parameters = new
+            {
+                type = "object",
+                properties = new
+                {
+                    sql = new
+                    {
+                        type = "string",
+                        description = "T-SQL SELECT -kysely. Esim: " +
+                                      "SELECT AVG(lampotila) AS avg FROM mittaukset " +
+                                      "WHERE paikkakunta = 'Helsinki' AND YEAR(pvm) = 2025 AND MONTH(pvm) = 2"
+                    }
+                },
+                required = new[] { "sql" }
+            }
+        }
+    };
+
+    private static readonly object[] CosmosTools = [CosmosQueryDatabaseTool];
+    private static readonly object[] SqlTools = [SqlQueryDatabaseTool];
 
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web)
     {
@@ -62,7 +103,8 @@ public static class ChatEndpoints
             ChatRequest request,
             IAzureOpenAIClient client,
             IRoutingEngine routingEngine,
-            IQueryService queryService,
+            [FromKeyedServices("cosmos")] IQueryService cosmosQueryService,
+            [FromKeyedServices("mssql")]  IQueryService sqlQueryService,
             ILoggerFactory loggerFactory,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
@@ -97,8 +139,16 @@ public static class ChatEndpoints
 
                 if (routingEngine.IsToolsEnabled(request))
                 {
+                    // Valitse oikea backend ja tool-kuvaukset policyn perusteella
+                    var backend = routingEngine.GetQueryBackend(request);
+                    var queryService = backend == "mssql" ? sqlQueryService : cosmosQueryService;
+                    var tools       = backend == "mssql" ? SqlTools : CosmosTools;
+                    var systemPrompt = backend == "mssql" ? SqlSystemPrompt : CosmosSystemPrompt;
+
+                    logger.LogInformation("Tools policy resolved. Backend={Backend}", backend);
+
                     return await HandleWithToolsAsync(
-                        request, requestId, modelChain, client, queryService, logger, cancellationToken);
+                        request, requestId, modelChain, client, queryService, tools, systemPrompt, logger, cancellationToken);
                 }
                 else
                 {
@@ -182,6 +232,8 @@ public static class ChatEndpoints
         IReadOnlyList<string> modelChain,
         IAzureOpenAIClient client,
         IQueryService queryService,
+        object[] tools,
+        string systemPrompt,
         ILogger logger,
         CancellationToken cancellationToken)
     {
@@ -192,7 +244,7 @@ public static class ChatEndpoints
             try
             {
                 var result = await RunAgentLoopAsync(
-                    request, requestId, modelKey, client, queryService, logger, cancellationToken);
+                    request, requestId, modelKey, client, queryService, tools, systemPrompt, logger, cancellationToken);
                 return result;
             }
             catch (CircuitBreakerOpenException ex)
@@ -229,12 +281,14 @@ public static class ChatEndpoints
         string modelKey,
         IAzureOpenAIClient client,
         IQueryService queryService,
+        object[] tools,
+        string systemPrompt,
         ILogger logger,
         CancellationToken cancellationToken)
     {
         var messages = new List<object>
         {
-            new { role = "system", content = SystemPrompt },
+            new { role = "system", content = systemPrompt },
             new { role = "user",   content = request.Message }
         };
 
@@ -245,7 +299,7 @@ public static class ChatEndpoints
         {
             logger.LogInformation("Agent loop iteration {Iteration}. ModelKey={ModelKey}", iteration + 1, modelKey);
 
-            var raw = await client.GetRawCompletionAsync(messages, Tools, modelKey, cancellationToken);
+            var raw = await client.GetRawCompletionAsync(messages, tools, modelKey, cancellationToken);
 
             model = raw.Model;
             totalUsage = raw.Usage;
