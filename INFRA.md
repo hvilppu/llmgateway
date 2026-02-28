@@ -107,7 +107,7 @@ python tools/seed_mssql.py \
   --cosmos-connection-string "<AZURE_COSMOS_CONNECTION_STRING>" \
   --cosmos-database mydb \
   --cosmos-container documents \
-  --mssql-connection-string "Server=<fqdn>;Database=llmgateway;User Id=sqladmin;Password=<salasana>;Encrypt=True;TrustServerCertificate=False;"
+  --mssql-connection-string "Driver={ODBC Driver 17 for SQL Server};Server=<fqdn>;Database=llmgateway;User Id=sqladmin;Password=<salasana>;Encrypt=yes;TrustServerCertificate=no;"
 ```
 
 Skripti on idempotentti (MERGE) — turvallista ajaa uudelleen.

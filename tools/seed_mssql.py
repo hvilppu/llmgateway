@@ -13,7 +13,7 @@ Ajo:
         --cosmos-connection-string "AccountEndpoint=...;AccountKey=..." \\
         --cosmos-database mydb \\
         --cosmos-container documents \\
-        --mssql-connection-string "Server=...;Database=llmgateway;..."
+        --mssql-connection-string "Server=...;Database=llmgateway;User Id=sqladmin;Password=...;Encrypt=yes;TrustServerCertificate=no;"
 
     tai aseta ympäristömuuttujat:
         COSMOS_CONNECTION_STRING, COSMOS_DATABASE, COSMOS_CONTAINER,
@@ -101,6 +101,9 @@ def extract_row(doc: dict) -> tuple | None:
 
 def write_to_mssql(conn_str: str, rows: list[tuple]) -> None:
     """Luo taulun (jos ei ole) ja upsertaa rivit MS SQL -kantaan."""
+    # Lisää Driver automaattisesti jos puuttuu
+    if "Driver=" not in conn_str and "driver=" not in conn_str:
+        conn_str = "Driver={ODBC Driver 17 for SQL Server};" + conn_str
     conn = pyodbc.connect(conn_str)
     conn.autocommit = False
     cursor = conn.cursor()
