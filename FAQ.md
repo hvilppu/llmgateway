@@ -22,7 +22,7 @@ Vastauksia yleisimpiin kysymyksiin gatewayn toimintaperiaatteesta, virhetilantei
 - [Kustannukset ja tokenit](#kustannukset-ja-tokenit)
   - [Mistä token-kulutus muodostuu tools-policyssä — miksi se on suurempi kuin suorassa kutsussa?](#mistä-token-kulutus-muodostuu-tools-policyssä--miksi-se-on-suurempi-kuin-suorassa-kutsussa)
   - [Miten agenttiloop kasvattaa kustannuksia verrattuna yksittäiseen kutsuun?](#miten-agenttiloop-kasvattaa-kustannuksia-verrattuna-yksittäiseen-kutsuun)
-  - [Miten estetään yllätyslasku — entä jos Jussi löytää API:n?](#miten-estetään-yllätyslasku--entä-jos-jussi-löytää-apin)
+  - [Miten estetään yllätyslasku — entä jos Jussi löytää API:n ja pystyy kutsumaan sitä?](#kustannussuojaus)
 
 ---
 
@@ -357,7 +357,9 @@ Käytännössä yhdellä tool-kutsulla kulutus on noin 4–8x suoraa kutsua suur
 
 ---
 
-### Miten estetään yllätyslasku — entä jos Jussi löytää API:n?
+<a id="kustannussuojaus"></a>
+
+### Miten estetään yllätyslasku — entä jos Jussi löytää API:n ja pystyy kutsumaan sitä?
 
 **Skenaario:** Jussi saa gatewayn URL:n käsiinsä ja kirjoittaa yksinkertaisen silmukan:
 
@@ -387,29 +389,112 @@ GPT-4 -hinnoin (arviolta 0,03 $/1 000 prompt-tokenia) tämä on noin **0,08 €/
 
 | Suojaus | Toteutus | Vaikutus |
 |---------|----------|----------|
-| Pääsynhallinta | `ApiKeyMiddleware` vaatii `X-Api-Key` -headerin joka pyynnöltä | Julkinen internet ei pääse kuluttamaan kiintiötä |
-| Silmukan katto | `MaxToolIterations = 5` — agentti saa korkeintaan 5 kierrosta | Yksi pyyntö ei voi tehdä loputtomasti Azure-kutsuja |
-| Vastauksen pituusrajoitus | `max_tokens = 512` (suora) / `1024` (tools) | LLM ei kirjoita sivukaupalla tekstiä per pyyntö |
-| Per-kutsu timeout | `TimeoutMs = 15 000 ms` | Jumiin jäänyt tai hidas kutsu katkaistaan eikä jää tikkaamaan |
-| Halvempi malli oletuksena | `chat_default` → `gpt4oMini`; `gpt4` vain `critical`-policyssa | Suurin osa liikenteestä menee 10–20x halvemmalle mallille |
-| Circuit breaker | 5 peräkkäistä virhettä sulkee yhteyden 30 s:ksi | Viallinen tai ylikuormittunut yhteys ei syö tokeneita tyhjään |
-| Aiheen rajaus | System prompt kieltäytyy aiheen ulkopuolisista pyynnöistä | "Kirjoita minulle romaani" ei kulu kalliita GPT-4-tokeneita |
+| Pääsynhallinta | `ApiKeyMiddleware` vaatii `X-Api-Key` -headerin joka pyynnöltä | Julkinen internet ei pääse ilman avainta |
+| Silmukan katto | `MaxToolIterations = 5` | Yksi pyyntö ei voi tehdä loputtomasti Azure-kutsuja |
+| Vastauksen pituusrajoitus | `max_tokens = 512` / `1024` | LLM ei kirjoita sivukaupalla tekstiä per pyyntö |
+| Per-kutsu timeout | `TimeoutMs = 15 000 ms` | Jumiin jäänyt kutsu katkaistaan |
+| Halvempi malli oletuksena | `chat_default` → `gpt4oMini` | Suurin osa liikenteestä menee 10–20x halvemmalle mallille |
+| Circuit breaker | 5 virhettä sulkee yhteyden 30 s | Viallinen yhteys ei syö tokeneita tyhjään |
+| Aiheen rajaus | System prompt kieltäytyy aiheen ulkopuolisista pyynnöistä | Epärelevantti liikenne ei kulu kalliita GPT-4-tokeneita |
 
 ---
 
 **Mitä puuttuu — lisää nämä ennen tuotantoon vientiä:**
 
-**1. Azure OpenAI -budjettihälytykset** *(tärkein)*
-Azure Portalissa: *Cost Management → Budgets → Add*. Aseta kuukausiraja ja hälytys esim. 80 %:n kohdalle. Voi myös automaattisesti sulkea APIn kun raja ylittyy. Tämä on ainoa suoja jos kaikki muu pettää.
+**1. Autentikointi — tunnista kuka kutsuu**
 
-**2. Rate limiting per API-avain**
-Nykyinen `ApiKeyMiddleware` tarkistaa vain avaimen oikeellisuuden — ei rajoita pyyntömäärää. Tuotantoon sopii esim. ASP.NET Coren sisäänrakennettu `AddRateLimiter` (fixed window tai token bucket). Esimerkki: max 10 pyyntöä/minuutti per avain.
+Nykyinen `ApiKeyMiddleware` tarkistaa staattista merkkijonoa `X-Api-Key`-headerista. Sopii demoon — ei tuotantoon, koska yksi jaettu avain tarkoittaa kaikkien käyttäjien näkymistä samana henkilönä, eikä vuotanutta avainta voi peruuttaa yksilöllisesti.
 
-**3. Token-kulutuksen seuranta**
-`usage.TotalTokens` on jokaisessa `ChatResponse`-vastauksessa, mutta sitä ei summata eikä siitä hälytellä. Yksinkertainen ratkaisu: kirjoita tokenit Application Insightsiin custom metricsiksi → aseta Alert Rule jos päivittäinen summa ylittää rajan.
+**Tuotantovaihtoehdot:**
 
-**4. Lyhytikäiset tai roolitetut API-avaimet**
-Yksi jaettu avain on riskialtis — jos se vuotaa, kaikki pääsevät. Tuotannossa kullekin käyttäjälle tai palvelulle oma avain joka voidaan peruuttaa yksilöllisesti.
+| Tapa | Milloin sopii | Toteutus ASP.NET Coressa |
+|------|--------------|--------------------------|
+| JWT / Azure AD (Entra ID) | Käyttäjillä omat tunnukset | `AddAuthentication().AddJwtBearer()` |
+| Managed Identity | Azure-palvelu kutsuu toista Azure-palvelua | Ei avainta lainkaan — Azure hoitaa tunnistuksen |
+| Azure API Management (APIM) | Halutaan kattava gateway-taso | APIM edessä, sisäinen gateway ei julkisessa internetissä |
+| Per-asiakaskohtainen API-avain | Yksinkertainen palvelu-integraatio | `ApiKeyMiddleware` laajennettuna per-avainrekisterillä |
+
+Yksinkertaisin tuotantopolku tälle projektille: **Azure AD + JWT**. ASP.NET Core validoi tokenin automaattisesti `AddJwtBearer`-middlewarella ja endpointeihin lisätään `.RequireAuthorization()`.
+
+**2. Rate limiting per API-avain tai käyttäjä**
+
+ASP.NET Core 7+ sisältää valmiin rate limiterin:
+
+```csharp
+// Program.cs
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddFixedWindowLimiter("per-key", opt =>
+    {
+        opt.PermitLimit = 10;                  // max 10 pyyntöä
+        opt.Window = TimeSpan.FromMinutes(1);  // per minuutti
+        opt.QueueLimit = 0;                    // ylimenevät saavat heti 429
+    });
+});
+app.UseRateLimiter();
+
+// ChatEndpoints.cs
+app.MapPost("/api/chat", ...).RequireRateLimiting("per-key");
+```
+
+Vaihtoehtoisesti **Azure API Management** hoitaa rate limitingin ilman koodimuutoksia: *Inbound policies → rate-limit-by-key*.
+
+**3. Azure OpenAI TPM-kiintiöt (Tokens Per Minute)**
+
+Tämä on vahvin yksittäinen kustannussuoja — se toimii Azure-tasolla riippumatta siitä mitä gateway-koodissa tapahtuu.
+
+Azure Portal → Azure OpenAI → *Deployments* → valitse deployment → **Tokens per minute (thousands)**. Käytännössä:
+- Testiympäristö: 10 000 TPM rajoittaa kulutuksen murto-osaan tuotantoarvosta
+- Jos Jussi alkaa pommittaa, Azure hylkää pyynnöt `429 Too Many Requests` -vastauksella
+- Circuit breaker nappaa 429-vastaukset ja katkaisee agenttiloopin ennen kuin kustannukset kasvavat
+
+**4. Budjettihälytykset Azure Cost Managementissa**
+
+Azure Portal → *Cost Management → Budgets → Add*:
+- Aseta kuukausiraja (esim. 50 €)
+- Hälytys sähköpostiin 80 %:n kohdalla
+- Voidaan konfiguroida automaattinen toiminto (Action Group) joka sulkee API-avaimet tai skaalaa palvelun nollaan kun raja ylittyy
+
+Tämä on ainoa suoja jos kaikki muu pettää.
+
+**5. Token-kulutuksen seuranta Application Insightsissa**
+
+`usage.TotalTokens` on jokaisessa `ChatResponse`-vastauksessa. Tuotannossa se kannattaa kirjoittaa Application Insightsiin custom metriikkana:
+
+```csharp
+_telemetry.TrackMetric("LlmTokensConsumed", response.Usage.TotalTokens,
+    new Dictionary<string, string> { ["Policy"] = policy, ["Model"] = model });
+```
+
+Application Insights → *Metrics* → aseta Alert Rule jos päivittäinen summa ylittää rajan. Näin näkee reaaliajassa kuka kuluttaa ja missä policyssä.
+
+**6. Salaisuuksien hallinta — älä laita avaimia appsettings.json:iin**
+
+Nykyisessä koodissa Azure OpenAI -avain on `appsettings.json`:ssa tai ympäristömuuttujassa. Tuotannossa:
+
+| Ympäristö | Suositeltu tapa |
+|-----------|----------------|
+| Azure App Service | Application Settings (salattu portaalissa, ei näy logissa) |
+| Azure Container Apps / AKS | Azure Key Vault + CSI driver tai Managed Identity |
+| Kaikki Azure-ympäristöt | Key Vault + Managed Identity — ei avainta koodissa lainkaan |
+
+```csharp
+// Program.cs — Key Vault Managed Identityllä, ei salasanoja koodissa
+builder.Configuration.AddAzureKeyVault(
+    new Uri("https://MY-VAULT.vault.azure.net/"),
+    new DefaultAzureCredential());
+```
+
+---
+
+**Tuotantoon viemisen tarkistuslista:**
+
+- [ ] Azure AD / JWT autentikointi — staattinen jaettu API-avain pois
+- [ ] Rate limiting — `AddRateLimiter` tai Azure API Management
+- [ ] Azure OpenAI TPM-kiintiö asetettu deployment-kohtaisesti
+- [ ] Budjettihälytys Azure Cost Managementissa (sähköposti + automaattinen toiminto)
+- [ ] API-avaimet ja yhteymerkkijonot Azure Key Vaultiin
+- [ ] Application Insights token-metriikalla ja hälytyksillä
 
 ---
 
