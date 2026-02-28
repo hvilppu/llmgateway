@@ -22,10 +22,22 @@ Vastauksia yleisimpiin kysymyksiin gatewayn toimintaperiaatteesta, virhetilantei
 - [Kustannukset ja tokenit](#kustannukset-ja-tokenit)
   - [Mistä token-kulutus muodostuu tools-policyssä — miksi se on suurempi kuin suorassa kutsussa?](#mistä-token-kulutus-muodostuu-tools-policyssä--miksi-se-on-suurempi-kuin-suorassa-kutsussa)
   - [Miten agenttiloop kasvattaa kustannuksia verrattuna yksittäiseen kutsuun?](#miten-agenttiloop-kasvattaa-kustannuksia-verrattuna-yksittäiseen-kutsuun)
+  - [Miten estetään yllätyslasku — entä jos Jussi löytää API:n?](#miten-estetään-yllätyslasku--entä-jos-jussi-löytää-apin)
 
 ---
 
 ## Toimintaperiaate
+
+Tämä projekti on harjoitus- ja demoympäristö joka näyttää miten tekoäly voidaan kytkeä oikeaan tietokantaan niin, että käyttäjä voi kysyä kysymyksiä **tavallisella suomen kielellä** — ilman lomakkeita, filttereitä tai SQL:n osaamista.
+
+Demossa on käytetty Suomen kaupunkien lämpötiladataa yksinkertaisena esimerkkinä. Sama rakenne toimisi mille tahansa datalle: myyntiluvut, asiakasdata, tuotevarasto.
+
+Projektin kolme pääkysymystä joihin se vastaa:
+- Miten AI päättää mistä tieto haetaan?
+- Mitä tapahtuu kun AI tekee virheen?
+- Mitä tämä maksaa ja miten se skaalautuu?
+
+---
 
 ### Miksi käyttää LLM-pohjaista hakua perinteisen SQL-kannan sijaan?
 
@@ -342,3 +354,71 @@ Käytännössä yhdellä tool-kutsulla kulutus on noin 4–8x suoraa kutsua suur
 
 → `ChatEndpoints.cs`, `RunAgentLoopAsync`: loop ja messages-listan kasvu
 → `ChatEndpoints.cs`, rivi 7: `MaxToolIterations = 5`
+
+---
+
+### Miten estetään yllätyslasku — entä jos Jussi löytää API:n?
+
+**Skenaario:** Jussi saa gatewayn URL:n käsiinsä ja kirjoittaa yksinkertaisen silmukan:
+
+```bash
+while true; do
+  curl -X POST http://gateway/api/chat \
+    -H "X-Api-Key: vuodettu-avain" \
+    -d '{"message": "Laske kaikki data", "policy": "tools"}'
+done
+```
+
+Jokainen pyyntö käynnistää agenttiloopin: jopa 5 Azure OpenAI -kutsua + Cosmos DB -haun. Yhdessä tunnissa Jussi voi tehdä tuhansia API-kutsuja. Viikko myöhemmin Azure-portaalista vilkahtaa: *"Token-lasku 800 €."*
+
+**Laskuesimerkki — yksi `tools`-pyyntö pahimmillaan:**
+
+| Vaihe | Kutsuja | Tokeneita (arvio) |
+|-------|---------|-------------------|
+| Agenttiloop, 5 kierrosta | 5 Azure OpenAI -kutsua | ~2 500 prompt + ~500 completion |
+| Cosmos DB -haku per kierros | 5 kyselyä | — |
+| **Yhteensä per yksi käyttäjäpyyntö** | **5 API-kutsua** | **~3 000 tokenia** |
+
+GPT-4 -hinnoin (arviolta 0,03 $/1 000 prompt-tokenia) tämä on noin **0,08 €/pyyntö**. 10 000 pyyntiä vuorokaudessa = **800 €/vrk**.
+
+---
+
+**Mitä tässä projektissa on jo tehty:**
+
+| Suojaus | Toteutus | Vaikutus |
+|---------|----------|----------|
+| Pääsynhallinta | `ApiKeyMiddleware` vaatii `X-Api-Key` -headerin joka pyynnöltä | Julkinen internet ei pääse kuluttamaan kiintiötä |
+| Silmukan katto | `MaxToolIterations = 5` — agentti saa korkeintaan 5 kierrosta | Yksi pyyntö ei voi tehdä loputtomasti Azure-kutsuja |
+| Vastauksen pituusrajoitus | `max_tokens = 512` (suora) / `1024` (tools) | LLM ei kirjoita sivukaupalla tekstiä per pyyntö |
+| Per-kutsu timeout | `TimeoutMs = 15 000 ms` | Jumiin jäänyt tai hidas kutsu katkaistaan eikä jää tikkaamaan |
+| Halvempi malli oletuksena | `chat_default` → `gpt4oMini`; `gpt4` vain `critical`-policyssa | Suurin osa liikenteestä menee 10–20x halvemmalle mallille |
+| Circuit breaker | 5 peräkkäistä virhettä sulkee yhteyden 30 s:ksi | Viallinen tai ylikuormittunut yhteys ei syö tokeneita tyhjään |
+| Aiheen rajaus | System prompt kieltäytyy aiheen ulkopuolisista pyynnöistä | "Kirjoita minulle romaani" ei kulu kalliita GPT-4-tokeneita |
+
+---
+
+**Mitä puuttuu — lisää nämä ennen tuotantoon vientiä:**
+
+**1. Azure OpenAI -budjettihälytykset** *(tärkein)*
+Azure Portalissa: *Cost Management → Budgets → Add*. Aseta kuukausiraja ja hälytys esim. 80 %:n kohdalle. Voi myös automaattisesti sulkea APIn kun raja ylittyy. Tämä on ainoa suoja jos kaikki muu pettää.
+
+**2. Rate limiting per API-avain**
+Nykyinen `ApiKeyMiddleware` tarkistaa vain avaimen oikeellisuuden — ei rajoita pyyntömäärää. Tuotantoon sopii esim. ASP.NET Coren sisäänrakennettu `AddRateLimiter` (fixed window tai token bucket). Esimerkki: max 10 pyyntöä/minuutti per avain.
+
+**3. Token-kulutuksen seuranta**
+`usage.TotalTokens` on jokaisessa `ChatResponse`-vastauksessa, mutta sitä ei summata eikä siitä hälytellä. Yksinkertainen ratkaisu: kirjoita tokenit Application Insightsiin custom metricsiksi → aseta Alert Rule jos päivittäinen summa ylittää rajan.
+
+**4. Lyhytikäiset tai roolitetut API-avaimet**
+Yksi jaettu avain on riskialtis — jos se vuotaa, kaikki pääsevät. Tuotannossa kullekin käyttäjälle tai palvelulle oma avain joka voidaan peruuttaa yksilöllisesti.
+
+---
+
+**Nyrkkisääntö mallin valinnalle:**
+
+`chat_default`-policy (`gpt4oMini`) maksaa noin **10–20x vähemmän** kuin `tools`-policy (`gpt4` + agenttiloop). Jos demossa tai kehitysvaiheessa ei tarvita kantahakua, käytä aina `chat_default`. Vaihda `tools` vain silloin kun Text-to-SQL on oikeasti tarpeen.
+
+→ `ApiKeyMiddleware.cs`: pääsynhallinta
+→ `ChatEndpoints.cs`, rivi 7: `MaxToolIterations = 5`
+→ `AzureOpenAIClient.cs`: `TimeoutMs`, `max_tokens`
+→ `CircuitBreaker.cs`: yhteyden katkaisu virheiden kasautuessa
+→ `Routing.cs`: mallin valinta policyn perusteella
