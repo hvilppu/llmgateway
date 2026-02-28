@@ -140,7 +140,7 @@ Kolme eri tapaa tuottaa vastaus — jokaisella eri vahvuudet ja rajoitukset:
 
 **Miksi Text-to-SQL on tässä projektissa parempi kuin RAG puhtaalle datalle:**
 
-Nykyinen data on täysin strukturoitua (`paikkakunta`, `pvm`, `lämpötila`). SQL osaa laskea täsmälleen oikean vastauksen. RAG hakisi lähimmät dokumentit embeddingin perusteella mutta ei pystyisi laskemaan keskiarvoa — se palauttaisi yksittäisiä mittauspisteitä joista LLM laskisi itse, epätarkasti.
+Nykyinen data on täysin strukturoitua (`paikkakunta`, `pvm`, `lampotila`). SQL osaa laskea täsmälleen oikean vastauksen. RAG hakisi lähimmät dokumentit embeddingin perusteella mutta ei pystyisi laskemaan keskiarvoa — se palauttaisi yksittäisiä mittauspisteitä joista LLM laskisi itse, epätarkasti.
 
 → `ChatEndpoints.cs`: `SystemPrompt` määrittää milloin työkalu kutsutaan
 → `QueryService.cs`: Text-to-SQL toteutus
@@ -288,7 +288,7 @@ Kysymys `"kylmin päivä helmikuussa"` tuottaa vektorin joka hakee dokumentteja 
 
 RAG palauttaa joukon dokumentteja, ei laskutulosta. Jos kysytään keskilämpötilaa, LLM saisi esim. 5 yksittäistä mittauspistettä ja joutuisi laskemaan keskiarvon itse. LLM ei ole laskin — se voi laskea väärin tai pyöristää epätarkasti.
 
-SQL sen sijaan laskee `AVG(c.content.lämpötila)` Cosmos DB:ssä palvelinpuolella ja palauttaa yhden tarkan luvun.
+SQL sen sijaan laskee `AVG(c.content.lampotila)` Cosmos DB:ssä palvelinpuolella ja palauttaa yhden tarkan luvun.
 
 **RAG toimii kun dokumentissa on luonnollista kieltä** joka kuvaa merkityksiä: "poikkeuksellisen kylmä", "meri jäätyi", "tuulinen". Silloin embedding löytää semanttisesti oikeat dokumentit.
 

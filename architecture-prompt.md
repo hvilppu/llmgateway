@@ -70,7 +70,7 @@ Draw a software architecture diagram for an ASP.NET Core (.NET 10) API gateway c
 - Deployment: `text-embedding-3-small`
 
 **Cosmos DB NoSQL** (external)
-- Container with documents: `{ id, content: { paikkakunta, pvm, lämpötila }, embedding: float[] }`
+- Container with documents: `{ id, content: { paikkakunta, pvm, lampotila }, embedding: float[] }`
 - Vector index on `embedding` field for `VectorDistance` queries
 
 **appsettings.json** (configuration)

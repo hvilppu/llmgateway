@@ -4,6 +4,10 @@ using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// HTTP-tason body-rajoitus — estää suurten pyyntöjen parsimisen ennen routing-vaihetta.
+// Oletusarvo Kestrelissä on 30 Mt; rajoitetaan 64 kt:iin joka riittää chat-viesteille.
+builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = 65_536);
+
 // API-avainautentikointi
 builder.Services.Configure<ApiKeyOptions>(
     builder.Configuration.GetSection("ApiKey"));

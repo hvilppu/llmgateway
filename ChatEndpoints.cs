@@ -28,7 +28,7 @@ public static class ChatEndpoints
             description = "Suorittaa Cosmos DB SQL SELECT -kyselyn tietokannalle. " +
                           "Käytä aggregointiin (AVG, SUM, COUNT, MIN, MAX) ja suodatukseen. " +
                           "Tietokannan schema: c.id (string), c.content.paikkakunta (string), " +
-                          "c.content.pvm (date string, esim. '2025-01-15'), c.content.lämpötila (number). " +
+                          "c.content.pvm (date string, esim. '2025-01-15'), c.content.lampotila (number). " +
                           "Vain SELECT-kyselyt sallittu.",
             parameters = new
             {
@@ -39,7 +39,7 @@ public static class ChatEndpoints
                     {
                         type = "string",
                         description = "Cosmos DB SQL SELECT -kysely. Esim: " +
-                                      "SELECT AVG(c.content.lämpötila) as avg FROM c " +
+                                      "SELECT AVG(c.content.lampotila) as avg FROM c " +
                                       "WHERE c.content.paikkakunta = 'Helsinki' " +
                                       "AND STARTSWITH(c.content.pvm, '2025-02')"
                     }
@@ -77,6 +77,19 @@ public static class ChatEndpoints
 
             logger.LogInformation("Received chat request. Policy={Policy}, MessageLength={MessageLength}",
                 request.Policy ?? "chat_default", request.Message.Length);
+
+            // Viesti-pituuden rajoitus — estää token-räjähdyksen ja turhan Azure-kutsun
+            if (string.IsNullOrWhiteSpace(request.Message))
+                return Results.Problem(
+                    title: "Invalid request",
+                    detail: "Message cannot be empty",
+                    statusCode: StatusCodes.Status400BadRequest);
+
+            if (request.Message.Length > 4_000)
+                return Results.Problem(
+                    title: "Invalid request",
+                    detail: $"Message too long: {request.Message.Length} characters (max 4000)",
+                    statusCode: StatusCodes.Status400BadRequest);
 
             try
             {
@@ -158,7 +171,7 @@ public static class ChatEndpoints
         logger.LogError(lastException, "All models in chain exhausted via provider errors");
         return Results.Problem(
             title: "LLM provider error",
-            detail: lastException?.Message ?? "All models failed",
+            detail: "LLM service is temporarily unavailable",
             statusCode: StatusCodes.Status502BadGateway);
     }
 
@@ -206,7 +219,7 @@ public static class ChatEndpoints
         logger.LogError(lastException, "All models in chain exhausted via provider errors");
         return Results.Problem(
             title: "LLM provider error",
-            detail: lastException?.Message ?? "All models failed",
+            detail: "LLM service is temporarily unavailable",
             statusCode: StatusCodes.Status502BadGateway);
     }
 

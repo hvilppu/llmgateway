@@ -130,6 +130,7 @@ public class AzureOpenAIClient : IAzureOpenAIClient
 
                     if (IsTransient(response.StatusCode))
                     {
+                        // Transientti virhe (408, 429, 5xx) — merkitään circuit breakerille
                         _circuitBreaker.RecordFailure(modelKey);
 
                         if (attempt < _options.MaxRetries)
@@ -140,10 +141,8 @@ public class AzureOpenAIClient : IAzureOpenAIClient
                             continue;
                         }
                     }
-                    else
-                    {
-                        _circuitBreaker.RecordFailure(modelKey);
-                    }
+                    // 4xx client-virheet (400, 401, 403, 404) eivät kerro palvelimen tilasta —
+                    // ei rekisteröidä circuit breakerille
 
                     throw new HttpRequestException($"Azure OpenAI error: {(int)response.StatusCode} {response.ReasonPhrase}");
                 }
@@ -261,6 +260,7 @@ public class AzureOpenAIClient : IAzureOpenAIClient
 
                     if (IsTransient(response.StatusCode))
                     {
+                        // Transientti virhe (408, 429, 5xx) — merkitään circuit breakerille
                         _circuitBreaker.RecordFailure(modelKey);
                         if (attempt < _options.MaxRetries)
                         {
@@ -268,10 +268,8 @@ public class AzureOpenAIClient : IAzureOpenAIClient
                             continue;
                         }
                     }
-                    else
-                    {
-                        _circuitBreaker.RecordFailure(modelKey);
-                    }
+                    // 4xx client-virheet eivät kerro palvelimen tilasta —
+                    // ei rekisteröidä circuit breakerille
 
                     throw new HttpRequestException($"Azure OpenAI error: {(int)response.StatusCode} {response.ReasonPhrase}");
                 }

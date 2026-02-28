@@ -76,7 +76,7 @@ def generate_docs() -> list[dict]:
                 "content": {
                     "paikkakunta": location,
                     "pvm":         d.isoformat(),   # "2024-07-15"
-                    "lämpötila":   temp,
+                    "lampotila":   temp,
                 },
             })
             idx += 1
@@ -104,7 +104,7 @@ def main():
     for doc in docs:
         container.upsert_item(doc)
         c = doc["content"]
-        print(f"  {doc['id']}  {c['paikkakunta']:<12}  {c['pvm']}  {c['lämpötila']:>6}°C")
+        print(f"  {doc['id']}  {c['paikkakunta']:<12}  {c['pvm']}  {c['lampotila']:>6}°C")
 
     print(f"\nValmis! {len(docs)} dokumenttia lisätty.")
 

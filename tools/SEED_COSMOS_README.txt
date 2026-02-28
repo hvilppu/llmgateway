@@ -5,7 +5,7 @@ Generoi 500 testidokumenttia Cosmos DB:hen:
   10 paikkakuntaa x 50 satunnaista päivää väliltä 2023-01-01 – 2025-12-31
 
 Dokumentin rakenne:
-  { id, content: { paikkakunta, pvm, lämpötila } }
+  { id, content: { paikkakunta, pvm, lampotila } }
 
 Paikkakunnat:
   Helsinki, Tampere, Turku, Oulu, Jyväskylä,
