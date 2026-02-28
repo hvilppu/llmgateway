@@ -104,6 +104,9 @@ def write_to_mssql(conn_str: str, rows: list[tuple]) -> None:
     # Lisää Driver automaattisesti jos puuttuu
     if "Driver=" not in conn_str and "driver=" not in conn_str:
         conn_str = "Driver={ODBC Driver 17 for SQL Server};" + conn_str
+    # Muunna .NET SqlClient -avainsanat ODBC-muotoon
+    conn_str = conn_str.replace("User Id=", "UID=").replace("user id=", "UID=")
+    conn_str = conn_str.replace("Password=", "PWD=").replace("password=", "PWD=")
     conn = pyodbc.connect(conn_str)
     conn.autocommit = False
     cursor = conn.cursor()
