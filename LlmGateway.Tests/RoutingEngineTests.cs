@@ -165,4 +165,57 @@ public class RoutingEngineTests
         var engine = Create(DefaultPolicies());
         Assert.False(engine.IsToolsEnabled(new ChatRequest { Policy = "unknown" }));
     }
+
+    // ===== GetQueryBackend =====
+
+    [Fact]
+    public void GetQueryBackend_DefaultPolicy_ReturnsCosmos()
+    {
+        var engine = Create(DefaultPolicies());
+        Assert.Equal("cosmos", engine.GetQueryBackend(new ChatRequest { Policy = null }));
+    }
+
+    [Fact]
+    public void GetQueryBackend_PolicyWithMssql_ReturnsMssql()
+    {
+        var policies = new Dictionary<string, PolicyConfig>
+        {
+            { "chat_default", new PolicyConfig { PrimaryModel = "gpt4oMini" } },
+            { "tools_sql",    new PolicyConfig { PrimaryModel = "gpt4", ToolsEnabled = true, QueryBackend = "mssql" } }
+        };
+        var engine = Create(policies);
+        Assert.Equal("mssql", engine.GetQueryBackend(new ChatRequest { Policy = "tools_sql" }));
+    }
+
+    [Fact]
+    public void GetQueryBackend_PolicyWithCosmos_ReturnsCosmos()
+    {
+        var policies = new Dictionary<string, PolicyConfig>
+        {
+            { "chat_default", new PolicyConfig { PrimaryModel = "gpt4oMini" } },
+            { "tools",        new PolicyConfig { PrimaryModel = "gpt4", ToolsEnabled = true, QueryBackend = "cosmos" } }
+        };
+        var engine = Create(policies);
+        Assert.Equal("cosmos", engine.GetQueryBackend(new ChatRequest { Policy = "tools" }));
+    }
+
+    [Fact]
+    public void GetQueryBackend_UnknownPolicy_FallsBackToDefault_ReturnsCosmos()
+    {
+        var engine = Create(DefaultPolicies());
+        Assert.Equal("cosmos", engine.GetQueryBackend(new ChatRequest { Policy = "nonexistent" }));
+    }
+
+    [Fact]
+    public void GetQueryBackend_PolicyWithoutQueryBackendSet_ReturnsCosmos()
+    {
+        // QueryBackend-kentän oletusarvo on "cosmos" — ei tarvitse asettaa eksplisiittisesti
+        var policies = new Dictionary<string, PolicyConfig>
+        {
+            { "chat_default", new PolicyConfig { PrimaryModel = "gpt4oMini" } },
+            { "tools",        new PolicyConfig { PrimaryModel = "gpt4", ToolsEnabled = true } }
+        };
+        var engine = Create(policies);
+        Assert.Equal("cosmos", engine.GetQueryBackend(new ChatRequest { Policy = "tools" }));
+    }
 }

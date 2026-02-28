@@ -146,9 +146,10 @@ public class AzureOpenAIClientTests
     public async Task GetChatCompletion_TransientError429_RetriesAndRecordsFailures()
     {
         // MaxRetries=2 → 3 HTTP calls.
-        // NOTE: RecordFailure is called once per loop iteration via the IsTransient-branch (A),
-        // and once more on the final attempt because the thrown HttpRequestException is caught
-        // by the outer catch(Exception) block (B). Total = 3 + 1 = 4.
+        // RecordFailure kutsutaan kerran per yritys IsTransient-haarassa.
+        // Viimeinen yritys: RecordFailure + break → lastException heitetään loopin ulkopuolelta,
+        // ei jää kiinni outer catch-lohkoon → ei ylimääräistä RecordFailure-kutsua.
+        // Total = 3.
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(ErrorResponse(HttpStatusCode.TooManyRequests));
         handler.Enqueue(ErrorResponse(HttpStatusCode.TooManyRequests));
@@ -160,7 +161,7 @@ public class AzureOpenAIClientTests
             client.GetChatCompletionAsync(new ChatRequest { Message = "Hi" }, "req-1", "gpt4oMini"));
 
         Assert.Equal(3, handler.CallCount);
-        Assert.Equal(4, cb.FailureCount); // 3 from IsTransient-branch + 1 from outer catch
+        Assert.Equal(3, cb.FailureCount); // yksi per yritys
     }
 
     // ===== GetRawCompletionAsync =====

@@ -7,9 +7,11 @@ namespace LlmGateway.Tests;
 
 public class QueryServiceTests
 {
-    // CosmosClient with fake connection string — won't actually connect until a query is made.
-    // This lets us test the SQL validation guard that runs before any Cosmos call.
-    private static CosmosQueryService CreateService() =>
+    // ── CosmosQueryService ────────────────────────────────────────────────────
+
+    // CosmosClient fake-yhteysjonolla — ei oikeasti yhdistä ennen kyselyä.
+    // Testaa validointisuojan joka ajetaan ennen Cosmos-kutsua.
+    private static CosmosQueryService CreateCosmosService() =>
         new CosmosQueryService(
             new CosmosClient("AccountEndpoint=https://fake.documents.azure.com:443/;AccountKey=dGVzdA==;"),
             Options.Create(new CosmosRagOptions
@@ -21,11 +23,11 @@ public class QueryServiceTests
             NullLogger<CosmosQueryService>.Instance);
 
     [Fact]
-    public async Task ExecuteQuery_SelectQuery_DoesNotThrowOnValidation()
+    public async Task Cosmos_SelectQuery_DoesNotThrowOnValidation()
     {
-        var service = CreateService();
-        // Will throw at Cosmos level (no real server), but should NOT throw InvalidOperationException
-        // for the SQL validation guard. We catch only InvalidOperationException to verify validation passes.
+        var service = CreateCosmosService();
+        // Heittää Cosmos-tasolla (ei oikeaa palvelinta), mutta EI InvalidOperationException
+        // — validointi menee läpi.
         var ex = await Record.ExceptionAsync(() =>
             service.ExecuteQueryAsync("SELECT c.id FROM c"));
 
@@ -36,27 +38,75 @@ public class QueryServiceTests
     [InlineData("DELETE FROM c")]
     [InlineData("UPDATE c SET c.x = 1")]
     [InlineData("DROP CONTAINER c")]
-    [InlineData("  delete from c")] // leading whitespace + lowercase
-    public async Task ExecuteQuery_NonSelectQuery_ThrowsInvalidOperationException(string sql)
+    [InlineData("  delete from c")]
+    public async Task Cosmos_NonSelectQuery_ThrowsInvalidOperationException(string sql)
     {
-        var service = CreateService();
-
+        var service = CreateCosmosService();
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.ExecuteQueryAsync(sql));
     }
 
     [Fact]
-    public async Task ExecuteQuery_EmptySql_ThrowsArgumentException()
+    public async Task Cosmos_EmptySql_ThrowsArgumentException()
     {
-        var service = CreateService();
+        var service = CreateCosmosService();
         await Assert.ThrowsAsync<ArgumentException>(() =>
             service.ExecuteQueryAsync(""));
     }
 
     [Fact]
-    public async Task ExecuteQuery_WhitespaceSql_ThrowsArgumentException()
+    public async Task Cosmos_WhitespaceSql_ThrowsArgumentException()
     {
-        var service = CreateService();
+        var service = CreateCosmosService();
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.ExecuteQueryAsync("   "));
+    }
+
+    // ── SqlQueryService ───────────────────────────────────────────────────────
+
+    // SqlQueryService fake-yhteysjonolla — epäkelpo yhteysjono kaatuu SqlConnection.OpenAsync:ssa,
+    // mutta validointisuoja ajetaan ennen sitä.
+    private static SqlQueryService CreateSqlService() =>
+        new SqlQueryService(
+            Options.Create(new SqlOptions { ConnectionString = "Server=fake;Database=fake;" }),
+            NullLogger<SqlQueryService>.Instance);
+
+    [Fact]
+    public async Task Sql_SelectQuery_DoesNotThrowOnValidation()
+    {
+        var service = CreateSqlService();
+        // Heittää SqlException/SocketException (ei oikeaa palvelinta), mutta EI InvalidOperationException
+        // — validointi menee läpi.
+        var ex = await Record.ExceptionAsync(() =>
+            service.ExecuteQueryAsync("SELECT * FROM mittaukset"));
+
+        Assert.IsNotType<InvalidOperationException>(ex);
+    }
+
+    [Theory]
+    [InlineData("DELETE FROM mittaukset")]
+    [InlineData("UPDATE mittaukset SET lampotila = 0")]
+    [InlineData("DROP TABLE mittaukset")]
+    [InlineData("  insert into mittaukset values (1)")]
+    public async Task Sql_NonSelectQuery_ThrowsInvalidOperationException(string sql)
+    {
+        var service = CreateSqlService();
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.ExecuteQueryAsync(sql));
+    }
+
+    [Fact]
+    public async Task Sql_EmptySql_ThrowsArgumentException()
+    {
+        var service = CreateSqlService();
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.ExecuteQueryAsync(""));
+    }
+
+    [Fact]
+    public async Task Sql_WhitespaceSql_ThrowsArgumentException()
+    {
+        var service = CreateSqlService();
         await Assert.ThrowsAsync<ArgumentException>(() =>
             service.ExecuteQueryAsync("   "));
     }
