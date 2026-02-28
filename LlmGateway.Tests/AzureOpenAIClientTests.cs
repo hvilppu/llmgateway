@@ -219,9 +219,8 @@ public class AzureOpenAIClientTests
     [Fact]
     public async Task GetChatCompletion_NonTransientError_NoRetry()
     {
-        // 400 Bad Request is not transient — should not retry even if MaxRetries > 0.
-        // NOTE: RecordFailure is called once in the else-branch and once more in the outer
-        // catch(Exception) that re-catches the thrown HttpRequestException. Total = 2.
+        // 400 Bad Request is not transient — should not retry and must not open circuit breaker.
+        // Client errors (4xx) indicate a bad request, not a server health issue.
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(ErrorResponse(HttpStatusCode.BadRequest));
         var cb = new FakeCircuitBreaker();
@@ -231,6 +230,6 @@ public class AzureOpenAIClientTests
             client.GetChatCompletionAsync(new ChatRequest { Message = "Hi" }, "req-1", "gpt4oMini"));
 
         Assert.Equal(1, handler.CallCount); // no retries
-        Assert.Equal(2, cb.FailureCount);   // 1 from non-transient branch + 1 from outer catch
+        Assert.Equal(0, cb.FailureCount);   // client error — circuit breaker must not record failure
     }
 }

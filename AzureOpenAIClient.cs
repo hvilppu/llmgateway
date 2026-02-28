@@ -142,9 +142,9 @@ public class AzureOpenAIClient : IAzureOpenAIClient
                         }
                     }
                     // 4xx client-virheet (400, 401, 403, 404) eivät kerro palvelimen tilasta —
-                    // ei rekisteröidä circuit breakerille
-
-                    throw new HttpRequestException($"Azure OpenAI error: {(int)response.StatusCode} {response.ReasonPhrase}");
+                    // ei rekisteröidä circuit breakerille. Break ohittaa outer catchin.
+                    lastException = new HttpRequestException($"Azure OpenAI error: {(int)response.StatusCode} {response.ReasonPhrase}");
+                    break;
                 }
 
                 _logger.LogInformation("Azure OpenAI call succeeded. LatencyMs={Latency}", stopwatch.ElapsedMilliseconds);
@@ -269,9 +269,9 @@ public class AzureOpenAIClient : IAzureOpenAIClient
                         }
                     }
                     // 4xx client-virheet eivät kerro palvelimen tilasta —
-                    // ei rekisteröidä circuit breakerille
-
-                    throw new HttpRequestException($"Azure OpenAI error: {(int)response.StatusCode} {response.ReasonPhrase}");
+                    // ei rekisteröidä circuit breakerille. Break ohittaa outer catchin.
+                    lastException = new HttpRequestException($"Azure OpenAI error: {(int)response.StatusCode} {response.ReasonPhrase}");
+                    break;
                 }
 
                 _logger.LogInformation("Azure OpenAI raw call succeeded. LatencyMs={Latency}", stopwatch.ElapsedMilliseconds);
