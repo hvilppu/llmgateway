@@ -81,10 +81,59 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
+            padding: 10px 0;
         }
 
         .welcome p { font-size: 0.83rem; color: #aaa; }
+
+        .data-info {
+            background: white;
+            border: 1px solid #e8e8e8;
+            border-radius: 10px;
+            padding: 12px 18px;
+            display: flex;
+            gap: 24px;
+            font-size: 0.8rem;
+            color: #555;
+            text-align: left;
+        }
+
+        .data-info-section { display: flex; flex-direction: column; gap: 5px; }
+        .data-info-label { font-size: 0.7rem; color: #aaa; text-transform: uppercase; letter-spacing: 0.05em; }
+
+        .city-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            max-width: 280px;
+        }
+
+        .city-tag {
+            background: #f0f2f5;
+            border-radius: 4px;
+            padding: 2px 7px;
+            font-size: 0.75rem;
+            color: #444;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+        }
+
+        .city-tag:hover { background: #e8eeff; color: #4f7dff; }
+
+        .year-list { display: flex; gap: 6px; }
+
+        .year-tag {
+            background: #f0f2f5;
+            border-radius: 4px;
+            padding: 2px 9px;
+            font-size: 0.75rem;
+            color: #444;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+        }
+
+        .year-tag:hover { background: #e8eeff; color: #4f7dff; }
 
         .chips {
             display: flex;
@@ -251,6 +300,32 @@
 
 <div class="chat" id="chat">
     <div class="welcome" id="welcome">
+        <div class="data-info">
+            <div class="data-info-section">
+                <span class="data-info-label">Kaupungit</span>
+                <div class="city-list">
+                    <span class="city-tag" onclick="insertCity(this)">Helsinki</span>
+                    <span class="city-tag" onclick="insertCity(this)">Tampere</span>
+                    <span class="city-tag" onclick="insertCity(this)">Turku</span>
+                    <span class="city-tag" onclick="insertCity(this)">Oulu</span>
+                    <span class="city-tag" onclick="insertCity(this)">Jyväskylä</span>
+                    <span class="city-tag" onclick="insertCity(this)">Rovaniemi</span>
+                    <span class="city-tag" onclick="insertCity(this)">Kuopio</span>
+                    <span class="city-tag" onclick="insertCity(this)">Lahti</span>
+                    <span class="city-tag" onclick="insertCity(this)">Joensuu</span>
+                    <span class="city-tag" onclick="insertCity(this)">Vaasa</span>
+                </div>
+            </div>
+            <div class="data-info-section">
+                <span class="data-info-label">Vuodet</span>
+                <div class="year-list">
+                    <span class="year-tag" onclick="insertYear(this)">2023</span>
+                    <span class="year-tag" onclick="insertYear(this)">2024</span>
+                    <span class="year-tag" onclick="insertYear(this)">2025</span>
+                </div>
+                <span style="font-size:0.72rem;color:#bbb;margin-top:4px;">~50 mittausta / kaupunki</span>
+            </div>
+        </div>
         <p>Kokeile esimerkiksi:</p>
         <div class="chips">
             <span class="chip" onclick="useExample(this)">Mikä oli kylmin kuukausi Tampereella 2024?</span>
@@ -289,6 +364,20 @@
 
     function useExample(el) {
         inputEl.value = el.textContent;
+        autoResize(inputEl);
+        inputEl.focus();
+    }
+
+    function insertCity(el) {
+        const cur = inputEl.value.trim();
+        inputEl.value = cur ? cur + ' ' + el.textContent : el.textContent;
+        autoResize(inputEl);
+        inputEl.focus();
+    }
+
+    function insertYear(el) {
+        const cur = inputEl.value.trim();
+        inputEl.value = cur ? cur + ' ' + el.textContent : el.textContent;
         autoResize(inputEl);
         inputEl.focus();
     }
