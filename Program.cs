@@ -61,6 +61,10 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
+// Staattinen UI (wwwroot/index.html) — ennen autentikointia jotta selain saa sivun ilman avainta
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
 app.UseHttpsRedirection();
 app.UseMiddleware<ApiKeyMiddleware>();
 

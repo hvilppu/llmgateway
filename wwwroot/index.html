@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LlmGateway</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f0f2f5;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background: #1a1a2e;
+            color: white;
+            padding: 12px 20px;
+            display: flex;
+            align-items: baseline;
+            gap: 12px;
+            flex-shrink: 0;
+        }
+
+        header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: -0.3px; }
+        header .subtitle { font-size: 0.78rem; opacity: 0.5; }
+
+        .config {
+            background: white;
+            border-bottom: 1px solid #e0e0e0;
+            padding: 8px 20px;
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            flex-wrap: wrap;
+            flex-shrink: 0;
+        }
+
+        .config-group {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+        }
+
+        .config label {
+            font-size: 0.78rem;
+            color: #888;
+            white-space: nowrap;
+        }
+
+        .config input, .config select {
+            font-size: 0.83rem;
+            border: 1px solid #d5d5d5;
+            border-radius: 6px;
+            padding: 5px 9px;
+            outline: none;
+            background: #fafafa;
+            transition: border-color 0.15s;
+        }
+
+        .config input:focus, .config select:focus { border-color: #4f7dff; background: white; }
+        .config input[type="password"] { width: 210px; font-family: monospace; letter-spacing: 0.05em; }
+        .config input.error { border-color: #e53935 !important; }
+
+        .chat {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px 20px 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .welcome {
+            align-self: center;
+            margin: auto;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .welcome p { font-size: 0.83rem; color: #aaa; }
+
+        .chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 7px;
+            justify-content: center;
+            max-width: 560px;
+        }
+
+        .chip {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 20px;
+            padding: 6px 13px;
+            font-size: 0.8rem;
+            color: #555;
+            cursor: pointer;
+            transition: border-color 0.15s, color 0.15s, background 0.15s;
+        }
+
+        .chip:hover { border-color: #4f7dff; color: #4f7dff; background: #f5f8ff; }
+
+        .message {
+            max-width: 72%;
+            padding: 9px 13px;
+            border-radius: 14px;
+            font-size: 0.88rem;
+            line-height: 1.55;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .message.user {
+            align-self: flex-end;
+            background: #4f7dff;
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .message.assistant {
+            align-self: flex-start;
+            background: white;
+            color: #1a1a1a;
+            border: 1px solid #e8e8e8;
+            border-bottom-left-radius: 4px;
+        }
+
+        .message.error {
+            align-self: center;
+            background: #fff3f3;
+            color: #c62828;
+            border: 1px solid #ffcdd2;
+            font-size: 0.82rem;
+            max-width: 90%;
+        }
+
+        .meta {
+            font-size: 0.7rem;
+            opacity: 0.45;
+            margin-top: 5px;
+        }
+
+        .typing {
+            align-self: flex-start;
+            background: white;
+            border: 1px solid #e8e8e8;
+            border-radius: 14px;
+            border-bottom-left-radius: 4px;
+            padding: 11px 15px;
+            display: none;
+        }
+
+        .dot {
+            display: inline-block;
+            width: 6px; height: 6px;
+            background: #bbb;
+            border-radius: 50%;
+            margin: 0 2px;
+            animation: bounce 1.3s infinite;
+        }
+
+        .dot:nth-child(2) { animation-delay: 0.18s; }
+        .dot:nth-child(3) { animation-delay: 0.36s; }
+
+        @keyframes bounce {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-5px); }
+        }
+
+        .input-area {
+            background: white;
+            border-top: 1px solid #e0e0e0;
+            padding: 12px 20px;
+            display: flex;
+            gap: 9px;
+            align-items: flex-end;
+            flex-shrink: 0;
+        }
+
+        .input-area textarea {
+            flex: 1;
+            font-family: inherit;
+            font-size: 0.88rem;
+            border: 1px solid #d5d5d5;
+            border-radius: 8px;
+            padding: 8px 12px;
+            resize: none;
+            outline: none;
+            line-height: 1.5;
+            max-height: 120px;
+            transition: border-color 0.15s;
+        }
+
+        .input-area textarea:focus { border-color: #4f7dff; }
+
+        .input-area button {
+            background: #4f7dff;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 0 18px;
+            height: 36px;
+            font-size: 0.88rem;
+            font-weight: 500;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background 0.15s;
+            flex-shrink: 0;
+        }
+
+        .input-area button:hover:not(:disabled) { background: #3a6aee; }
+        .input-area button:disabled { background: #c5c5c5; cursor: default; }
+
+        .hint {
+            font-size: 0.7rem;
+            color: #bbb;
+            text-align: right;
+            padding: 0 20px 6px;
+            flex-shrink: 0;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>LlmGateway</h1>
+    <span class="subtitle">Tekoälypohjainen säädata-haku</span>
+</header>
+
+<div class="config">
+    <div class="config-group">
+        <label for="apiKey">API-avain</label>
+        <input type="password" id="apiKey" placeholder="X-Api-Key" autocomplete="off">
+    </div>
+    <div class="config-group">
+        <label for="policy">Policy</label>
+        <select id="policy">
+            <option value="tools">tools — hakee kannasta</option>
+            <option value="chat_default">chat_default — LLM suoraan</option>
+            <option value="critical">critical — vahvempi malli</option>
+        </select>
+    </div>
+</div>
+
+<div class="chat" id="chat">
+    <div class="welcome" id="welcome">
+        <p>Kokeile esimerkiksi:</p>
+        <div class="chips">
+            <span class="chip" onclick="useExample(this)">Mikä oli kylmin kuukausi Tampereella 2024?</span>
+            <span class="chip" onclick="useExample(this)">Mikä oli lämpötilan keskiarvo Helsingissä helmikuussa 2025?</span>
+            <span class="chip" onclick="useExample(this)">Vertaile Helsingin ja Oulun talvia 2024</span>
+            <span class="chip" onclick="useExample(this)">Miksi lämpötila vaihtelee vuodenajan mukaan?</span>
+        </div>
+    </div>
+    <div class="typing" id="typing">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    </div>
+</div>
+
+<div class="input-area">
+    <textarea id="input" placeholder="Kirjoita kysymys... (Enter lähettää)" rows="1"
+              onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+    <button id="sendBtn" onclick="send()">Lähetä</button>
+</div>
+<div class="hint">Shift+Enter = rivinvaihto</div>
+
+<script>
+    const chatEl   = document.getElementById('chat');
+    const inputEl  = document.getElementById('input');
+    const sendBtn  = document.getElementById('sendBtn');
+    const typingEl = document.getElementById('typing');
+    const welcomeEl = document.getElementById('welcome');
+    const apiKeyEl = document.getElementById('apiKey');
+    const policyEl = document.getElementById('policy');
+
+    // Palauta tallennettu avain ja policy
+    apiKeyEl.value = localStorage.getItem('llmgw_key') || '';
+    policyEl.value = localStorage.getItem('llmgw_policy') || 'tools';
+
+    apiKeyEl.addEventListener('change', () => localStorage.setItem('llmgw_key', apiKeyEl.value));
+    policyEl.addEventListener('change', () => localStorage.setItem('llmgw_policy', policyEl.value));
+
+    function useExample(el) {
+        inputEl.value = el.textContent;
+        autoResize(inputEl);
+        inputEl.focus();
+    }
+
+    function autoResize(el) {
+        el.style.height = 'auto';
+        el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+    }
+
+    function handleKey(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            send();
+        }
+    }
+
+    function addMessage(role, text, meta) {
+        welcomeEl.style.display = 'none';
+
+        const div = document.createElement('div');
+        div.className = 'message ' + role;
+        div.textContent = text;
+
+        if (meta) {
+            const m = document.createElement('div');
+            m.className = 'meta';
+            m.textContent = meta;
+            div.appendChild(m);
+        }
+
+        chatEl.insertBefore(div, typingEl);
+        chatEl.scrollTop = chatEl.scrollHeight;
+    }
+
+    async function send() {
+        const text = inputEl.value.trim();
+        if (!text) return;
+
+        const apiKey = apiKeyEl.value.trim();
+        if (!apiKey) {
+            apiKeyEl.classList.add('error');
+            apiKeyEl.focus();
+            setTimeout(() => apiKeyEl.classList.remove('error'), 1800);
+            return;
+        }
+
+        inputEl.value = '';
+        autoResize(inputEl);
+        sendBtn.disabled = true;
+
+        addMessage('user', text);
+
+        typingEl.style.display = 'block';
+        chatEl.scrollTop = chatEl.scrollHeight;
+
+        try {
+            const res = await fetch('/api/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Api-Key': apiKey
+                },
+                body: JSON.stringify({ message: text, policy: policyEl.value })
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                addMessage('error', data.detail || data.title || 'Virhe ' + res.status);
+            } else {
+                const meta = data.model + ' · ' + (data.usage?.totalTokens ?? '?') + ' tok';
+                addMessage('assistant', data.reply, meta);
+            }
+        } catch {
+            addMessage('error', 'Verkkovirhe — tarkista yhteys ja päivitä sivu');
+        } finally {
+            typingEl.style.display = 'none';
+            sendBtn.disabled = false;
+            inputEl.focus();
+        }
+    }
+</script>
+
+</body>
+</html>
