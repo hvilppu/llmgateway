@@ -92,6 +92,22 @@ Backend valitaan automaattisesti policyn mukaan `ChatEndpoints.MapChatEndpoints`
 
 Molemmat backendit rekisteröity keyed serviceiksi (`"cosmos"` ja `"mssql"`), jolloin molemmat ovat aktiivisena samanaikaisesti. Backendille annetaan myös eri system prompt ja tool-kuvaus, jotta LLM osaa generoida oikean SQL-syntaksin.
 
+## Agenttiloop — SQL-generoinnin ohjaus
+
+`MaxToolIterations = 5` — yläraja tool-kutsujen määrälle per pyyntö. Estää äärettömän loopin.
+
+LLM generoi SQL-kyselyt itse saamansa tool-kuvauksen ja system promptin perusteella. Kummallekin backendille on omat rajoitukset jotka on kirjattu sekä system promptiin että tool-kuvaukseen:
+
+**Cosmos DB (`CosmosSystemPrompt` + `CosmosQueryDatabaseTool`):**
+- `ORDER BY` + `GROUP BY` ei toimi yhdessä — kielletty eksplisiittisesti
+- Ei `MONTH()` / `YEAR()` -funktioita — käytä `STARTSWITH` tai `SUBSTRING(c.content.pvm, 0, 7)`
+- Kuukausittainen ryhmittely: `GROUP BY SUBSTRING(c.content.pvm, 0, 7)`
+- Min/max kuukaudesta: hae kaikki kuukaudet ilman ORDER BY, päättele itse tuloksista
+
+**MS SQL (`SqlSystemPrompt` + `SqlQueryDatabaseTool`):**
+- `LIMIT` ei ole T-SQL:ää — käytä `TOP N`
+- Kielto on sekä system promptissa että tool-kuvauksessa (LLM unohtaa helposti agenttiloopin aikana)
+
 ## Resilientti kutsulogiikka (AzureOpenAIClient)
 
 - **Retry**: `MaxRetries` uudelleenyritystä lineaarisella viiveellä (`RetryDelayMs * yritysnumero`)
