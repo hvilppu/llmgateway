@@ -293,6 +293,20 @@
             padding: 0 20px 6px;
             flex-shrink: 0;
         }
+
+        .examples-btn {
+            font-size: 0.77rem;
+            color: #888;
+            background: none;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 4px 10px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: border-color 0.15s, color 0.15s, background 0.15s;
+        }
+
+        .examples-btn:hover { border-color: #4f7dff; color: #4f7dff; background: #f5f8ff; }
     </style>
 </head>
 <body>
@@ -315,6 +329,7 @@
             <option value="chat_default">chat_default — LLM suoraan</option>
             <option value="critical">critical — vahvempi malli</option>
         </select>
+        <button class="examples-btn" onclick="showExamples()">Näytä esimerkit</button>
     </div>
 </div>
 
@@ -400,6 +415,15 @@
     function insertYear(el) {
         const cur = inputEl.value.trim();
         inputEl.value = cur ? cur + ' ' + el.textContent : el.textContent;
+        autoResize(inputEl);
+        inputEl.focus();
+    }
+
+    function showExamples() {
+        // Poista kaikki viestipalkit chatista (jätä welcome ja typing)
+        chatEl.querySelectorAll('.message').forEach(el => el.remove());
+        welcomeEl.style.display = '';
+        inputEl.value = '';
         autoResize(inputEl);
         inputEl.focus();
     }

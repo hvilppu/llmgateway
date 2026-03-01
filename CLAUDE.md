@@ -5,22 +5,46 @@ ASP.NET Core (.NET 10) minimal API gateway Azure OpenAI -palvelulle. Tukee sekä
 ## Rakenne
 
 ```
-Program.cs                DI-rekisteröinnit, middleware-pipeline
-ChatEndpoints.cs          POST /api/chat endpoint — yksinkertainen + agenttiloop (function calling)
-                          Erillinen system prompt ja tool-kuvaus Cosmos DB- ja MS SQL -poluille
-AzureOpenAIClient.cs      IAzureOpenAIClient + toteutus (retry, circuit breaker, GetRawCompletionAsync)
-AzureOpenAIOptions.cs     Konfiguraatio-optiot (oma tiedosto)
-CircuitBreaker.cs         ICircuitBreaker, InMemoryCircuitBreaker, CircuitBreakerOptions
-Routing.cs                IRoutingEngine, RoutingEngine, PolicyOptions, PolicyConfig
-                          PolicyConfig.QueryBackend ("cosmos" | "mssql")
-                          IRoutingEngine.GetQueryBackend(request)
-RagService.cs             IRagService, CosmosRagService, CosmosRagOptions (vektorihaku)
-QueryService.cs           IQueryService
-                          CosmosQueryService — Cosmos DB NoSQL SELECT -kyselyt
-                          SqlQueryService    — MS SQL / Azure SQL T-SQL SELECT -kyselyt
-                          SqlOptions         — MS SQL -yhteysasetukset
-Models/Models.cs          ChatRequest, ChatResponse, UsageInfo, Azure-vastausmallit + tool calling -mallit
+Program.cs                              DI-rekisteröinnit, middleware-pipeline
+
+Endpoints/
+  ChatEndpoints.cs                      POST /api/chat endpoint — yksinkertainen + agenttiloop (function calling)
+                                        Erillinen system prompt ja tool-kuvaus Cosmos DB- ja MS SQL -poluille
+
+Infrastructure/
+  AzureOpenAIClient.cs                  IAzureOpenAIClient + toteutus (retry, circuit breaker, GetRawCompletionAsync)
+  AzureOpenAIOptions.cs                 Konfiguraatio-optiot
+  CircuitBreaker.cs                     ICircuitBreaker, InMemoryCircuitBreaker, CircuitBreakerOptions
+
+Middleware/
+  ApiKeyMiddleware.cs                   X-Api-Key -headerin tarkistus, ApiKeyOptions
+
+Models/
+  Models.cs                             ChatRequest, ChatResponse, UsageInfo, Azure-vastausmallit + tool calling -mallit
+
+Routing/
+  Routing.cs                            IRoutingEngine, RoutingEngine, PolicyOptions, PolicyConfig
+                                        PolicyConfig.QueryBackend ("cosmos" | "mssql")
+                                        IRoutingEngine.GetQueryBackend(request)
+
+Services/
+  RagService.cs                         IRagService, CosmosRagService, CosmosRagOptions (vektorihaku)
+  QueryService.cs                       IQueryService
+                                        CosmosQueryService — Cosmos DB NoSQL SELECT -kyselyt
+                                        SqlQueryService    — MS SQL / Azure SQL T-SQL SELECT -kyselyt
+                                        SqlOptions         — MS SQL -yhteysasetukset
 ```
+
+### Namespacet
+
+| Kansio | Namespace |
+|--------|-----------|
+| `Endpoints/` | `LlmGateway.Endpoints` |
+| `Infrastructure/` | `LlmGateway.Infrastructure` |
+| `Middleware/` | `LlmGateway.Middleware` |
+| `Models/` | `LlmGateway.Models` |
+| `Routing/` | `LlmGateway.Routing` |
+| `Services/` | `LlmGateway.Services` |
 
 ## Teknologiat
 
@@ -127,7 +151,7 @@ LLM generoi SQL-kyselyt itse saamansa tool-kuvauksen ja system promptin perustee
 ## Konventiot
 
 - Endpointit omiin tiedostoihin `MapXxxEndpoints(this WebApplication app)` -patternilla
-- Mallit `Models/`-kansiossa, namespace `LlmGateway` (ei `LlmGateway.Models`)
+- Kansiorakenne vastaa namespace-hierarkiaa (`LlmGateway.<Kansio>`)
 - Lokitus structured logging -tyylillä (`Policy=`, `ModelKey=`, `LatencyMs=`, `Backend=` jne.)
 - Kaikki koodikommentit suomeksi
 
