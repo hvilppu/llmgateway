@@ -1,3 +1,6 @@
+using LlmGateway.Infrastructure;
+using LlmGateway.Models;
+using LlmGateway.Routing;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;

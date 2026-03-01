@@ -1,5 +1,5 @@
 
-namespace LlmGateway;
+namespace LlmGateway.Models;
 
 // Asiakkaan lähettämä pyyntö gatewaylle.
 // Message on käyttäjän viesti, ConversationId mahdollistaa keskusteluhistorian myöhemmin.

@@ -1,6 +1,8 @@
+using LlmGateway.Infrastructure;
+using LlmGateway.Models;
 using Microsoft.Extensions.Options;
 
-namespace LlmGateway;
+namespace LlmGateway.Routing;
 
 // Konfiguraatio kaikille policyille. Sidotaan appsettings-osioon "Policies".
 public class PolicyOptions

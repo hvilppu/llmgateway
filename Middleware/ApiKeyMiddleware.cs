@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Options;
 
-namespace LlmGateway;
+namespace LlmGateway.Middleware;
 
 // Konfiguraatio API-avaimelle. Sidotaan appsettings-osioon "ApiKey".
 public class ApiKeyOptions

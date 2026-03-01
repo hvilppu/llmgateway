@@ -1,3 +1,5 @@
+using LlmGateway.Infrastructure;
+
 namespace LlmGateway.Tests;
 
 internal class FakeCircuitBreaker : ICircuitBreaker

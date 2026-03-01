@@ -3,7 +3,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
 using System.Text.Json;
 
-namespace LlmGateway;
+namespace LlmGateway.Services;
 
 // Text-to-SQL -palvelun rajapinta. LLM generoi SQL-kyselyn, gateway suorittaa sen tietokannassa.
 public interface IQueryService

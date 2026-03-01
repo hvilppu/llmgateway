@@ -1,9 +1,10 @@
+using LlmGateway.Infrastructure;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.Options;
 using System.Text;
 using System.Text.Json;
 
-namespace LlmGateway;
+namespace LlmGateway.Services;
 
 // Konfiguraatio Cosmos DB -yhteyttä ja vektorihaun asetuksia varten.
 // Sidotaan appsettings-osioon "CosmosRag".

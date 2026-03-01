@@ -2,7 +2,7 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Options;
 
-namespace LlmGateway;
+namespace LlmGateway.Infrastructure;
 
 // Circuit breakerin konfiguraatio appsettingsistä.
 // FailureThreshold: montako peräkkäistä virhettä ennen kuin piiri avataan.

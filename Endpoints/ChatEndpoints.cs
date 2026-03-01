@@ -1,7 +1,11 @@
+using LlmGateway.Infrastructure;
+using LlmGateway.Models;
+using LlmGateway.Routing;
+using LlmGateway.Services;
 using Microsoft.Extensions.DependencyInjection;
 using System.Text.Json;
 
-namespace LlmGateway;
+namespace LlmGateway.Endpoints;
 
 public static class ChatEndpoints
 {

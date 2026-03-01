@@ -1,4 +1,8 @@
-using LlmGateway;
+using LlmGateway.Endpoints;
+using LlmGateway.Infrastructure;
+using LlmGateway.Middleware;
+using LlmGateway.Routing;
+using LlmGateway.Services;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.Options;
 

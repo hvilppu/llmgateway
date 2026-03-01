@@ -2,9 +2,10 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using LlmGateway.Models;
 using Microsoft.Extensions.Options;
 
-namespace LlmGateway;
+namespace LlmGateway.Infrastructure;
 
 // Rajapinta mahdollistaa mock-toteutuksen testeissä.
 public interface IAzureOpenAIClient

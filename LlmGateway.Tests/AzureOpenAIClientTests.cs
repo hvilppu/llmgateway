@@ -1,5 +1,7 @@
 using System.Net;
 using System.Text;
+using LlmGateway.Infrastructure;
+using LlmGateway.Models;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;

@@ -1,4 +1,4 @@
-namespace LlmGateway;
+namespace LlmGateway.Infrastructure;
 
 // Sidotaan appsettings-osioon "AzureOpenAI". Rekisteröidään DI:hin IOptions<AzureOpenAIOptions>.
 public class AzureOpenAIOptions
