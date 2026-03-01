@@ -29,6 +29,8 @@ public static class ChatEndpoints
         "Vastaa suomeksi. Jos kysymys ei liity lämpötila- tai säädataan, kieltäydy kohteliaasti. " +
         "Sinulla on käytettävissä työkalu:\n" +
         "- query_database: suorita T-SQL SELECT -kysely MS SQL -tietokantaan (käytä aggregointiin: keskiarvot, summat, määrät, suodatus)\n" +
+        "TÄRKEÄ T-SQL-rajoitus: älä KOSKAAN käytä LIMIT — se ei toimi SQL Serverissä. " +
+        "Rivien rajaamiseen käytä TOP N (esim. SELECT TOP 1 ...). " +
         "Käytä työkalua aina kun kysymys koskee dataa.";
 
     // Cosmos DB -tool-kuvaus (NoSQL-syntaksi).
@@ -79,7 +81,8 @@ public static class ChatEndpoints
                           "Käytä aggregointiin (AVG, SUM, COUNT, MIN, MAX) ja suodatukseen. " +
                           "Taulu: mittaukset. Sarakkeet: id (NVARCHAR), paikkakunta (NVARCHAR), " +
                           "pvm (DATE), lampotila (FLOAT). " +
-                          "Vain SELECT-kyselyt sallittu.",
+                          "Vain SELECT-kyselyt sallittu. " +
+                          "KIELLETTY: LIMIT — käytä aina TOP N rivien rajaamiseen.",
             parameters = new
             {
                 type = "object",
@@ -88,9 +91,12 @@ public static class ChatEndpoints
                     sql = new
                     {
                         type = "string",
-                        description = "T-SQL SELECT -kysely. Esim: " +
-                                      "SELECT AVG(lampotila) AS avg FROM mittaukset " +
-                                      "WHERE paikkakunta = 'Helsinki' AND YEAR(pvm) = 2025 AND MONTH(pvm) = 2"
+                        description = "T-SQL SELECT -kysely. Ei LIMIT — käytä TOP N. Esimerkkejä: " +
+                                      "1) Kuukauden keskiarvo: SELECT AVG(lampotila) AS avg FROM mittaukset " +
+                                      "WHERE paikkakunta = 'Helsinki' AND YEAR(pvm) = 2025 AND MONTH(pvm) = 2. " +
+                                      "2) Kylmin kuukausi: SELECT TOP 1 MONTH(pvm) AS kk, AVG(lampotila) AS avg " +
+                                      "FROM mittaukset WHERE paikkakunta = 'Tampere' AND YEAR(pvm) = 2024 " +
+                                      "GROUP BY MONTH(pvm) ORDER BY AVG(lampotila) ASC"
                     }
                 },
                 required = new[] { "sql" }
