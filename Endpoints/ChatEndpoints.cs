@@ -16,26 +16,34 @@ public static class ChatEndpoints
         "Olet assistentti joka vastaa AINOASTAAN Suomen kaupunkien lämpötila- ja säädataan liittyviin kysymyksiin. " +
         "Vastaa suomeksi. Jos kysymys ei liity aiheeseen, kieltäydy kohteliaasti.";
 
-    // Cosmos DB -polun system prompt.
-    private const string CosmosSystemPrompt =
-        "Olet assistentti joka vastaa AINOASTAAN Suomen kaupunkien lämpötila- ja säädataan liittyviin kysymyksiin. " +
-        "Vastaa suomeksi. Jos kysymys ei liity lämpötila- tai säädataan, kieltäydy kohteliaasti. " +
-        "Sinulla on käytettävissä työkalu:\n" +
-        "- query_database: suorita Cosmos DB SQL -kysely (käytä aggregointiin: keskiarvot, summat, määrät, suodatus)\n" +
-        "TÄRKEÄ RAJOITUS: Cosmos DB SQL ei tue ORDER BY:tä GROUP BY:n kanssa. " +
-        "Kun haet kylmintä tai lämpimintä kuukautta: hae KAIKKI kuukaudet GROUP BY:llä (ilman ORDER BY), " +
-        "katso palautetut kuukausikeskiarvot ja päättele itse mikä on pienin tai suurin. " +
-        "Käytä työkalua aina kun kysymys koskee dataa.";
+    // Cosmos DB -polun system prompt. Skeema injektoidaan dynaamisesti ajonaikana.
+    private static string BuildCosmosSystemPrompt(string schema)
+    {
+        var schemaSection = string.IsNullOrEmpty(schema) ? "" : $"\nTietokannan skeema:\n{schema}\n";
+        return "Olet assistentti joka vastaa AINOASTAAN Suomen kaupunkien lämpötila- ja säädataan liittyviin kysymyksiin. " +
+               "Vastaa suomeksi. Jos kysymys ei liity lämpötila- tai säädataan, kieltäydy kohteliaasti. " +
+               "Sinulla on käytettävissä työkalu:\n" +
+               "- query_database: suorita Cosmos DB SQL -kysely (käytä aggregointiin: keskiarvot, summat, määrät, suodatus)" +
+               schemaSection +
+               "\nTÄRKEÄ RAJOITUS: Cosmos DB SQL ei tue ORDER BY:tä GROUP BY:n kanssa. " +
+               "Kun haet kylmintä tai lämpimintä kuukautta: hae KAIKKI kuukaudet GROUP BY:llä (ilman ORDER BY), " +
+               "katso palautetut kuukausikeskiarvot ja päättele itse mikä on pienin tai suurin. " +
+               "Käytä työkalua aina kun kysymys koskee dataa.";
+    }
 
-    // MS SQL -polun system prompt.
-    private const string SqlSystemPrompt =
-        "Olet assistentti joka vastaa AINOASTAAN Suomen kaupunkien lämpötila- ja säädataan liittyviin kysymyksiin. " +
-        "Vastaa suomeksi. Jos kysymys ei liity lämpötila- tai säädataan, kieltäydy kohteliaasti. " +
-        "Sinulla on käytettävissä työkalu:\n" +
-        "- query_database: suorita T-SQL SELECT -kysely MS SQL -tietokantaan (käytä aggregointiin: keskiarvot, summat, määrät, suodatus)\n" +
-        "TÄRKEÄ T-SQL-rajoitus: älä KOSKAAN käytä LIMIT — se ei toimi SQL Serverissä. " +
-        "Rivien rajaamiseen käytä TOP N (esim. SELECT TOP 1 ...). " +
-        "Käytä työkalua aina kun kysymys koskee dataa.";
+    // MS SQL -polun system prompt. Skeema injektoidaan dynaamisesti ajonaikana.
+    private static string BuildSqlSystemPrompt(string schema)
+    {
+        var schemaSection = string.IsNullOrEmpty(schema) ? "" : $"\nTietokannan skeema:\n{schema}\n";
+        return "Olet assistentti joka vastaa AINOASTAAN Suomen kaupunkien lämpötila- ja säädataan liittyviin kysymyksiin. " +
+               "Vastaa suomeksi. Jos kysymys ei liity lämpötila- tai säädataan, kieltäydy kohteliaasti. " +
+               "Sinulla on käytettävissä työkalu:\n" +
+               "- query_database: suorita T-SQL SELECT -kysely MS SQL -tietokantaan (käytä aggregointiin: keskiarvot, summat, määrät, suodatus)" +
+               schemaSection +
+               "\nTÄRKEÄ T-SQL-rajoitus: älä KOSKAAN käytä LIMIT — se ei toimi SQL Serverissä. " +
+               "Rivien rajaamiseen käytä TOP N (esim. SELECT TOP 1 ...). " +
+               "Käytä työkalua aina kun kysymys koskee dataa.";
+    }
 
     // Cosmos DB -tool-kuvaus (NoSQL-syntaksi).
     private static readonly object CosmosQueryDatabaseTool = new
@@ -46,8 +54,7 @@ public static class ChatEndpoints
             name = "query_database",
             description = "Suorittaa Cosmos DB SQL SELECT -kyselyn tietokannalle. " +
                           "Käytä aggregointiin (AVG, SUM, COUNT, MIN, MAX) ja suodatukseen. " +
-                          "Tietokannan schema: c.id (string), c.content.paikkakunta (string), " +
-                          "c.content.pvm (date string, esim. '2025-01-15'), c.content.lampotila (number). " +
+                          "Skeema on annettu system promptissa. " +
                           "Vain SELECT-kyselyt sallittu. " +
                           "RAJOITUS: ORDER BY ei toimi GROUP BY:n kanssa — älä yhdistä niitä. " +
                           "Kuukausittainen ryhmittely: GROUP BY SUBSTRING(c.content.pvm,0,7). " +
@@ -83,8 +90,7 @@ public static class ChatEndpoints
             name = "query_database",
             description = "Suorittaa T-SQL SELECT -kyselyn MS SQL -tietokannalle. " +
                           "Käytä aggregointiin (AVG, SUM, COUNT, MIN, MAX) ja suodatukseen. " +
-                          "Taulu: mittaukset. Sarakkeet: id (NVARCHAR), paikkakunta (NVARCHAR), " +
-                          "pvm (DATE), lampotila (FLOAT). " +
+                          "Skeema on annettu system promptissa. " +
                           "Vain SELECT-kyselyt sallittu. " +
                           "KIELLETTY: LIMIT — käytä aina TOP N rivien rajaamiseen.",
             parameters = new
@@ -124,6 +130,8 @@ public static class ChatEndpoints
             IRoutingEngine routingEngine,
             [FromKeyedServices("cosmos")] IQueryService cosmosQueryService,
             [FromKeyedServices("mssql")]  IQueryService sqlQueryService,
+            [FromKeyedServices("cosmos")] ISchemaProvider cosmosSchemaProvider,
+            [FromKeyedServices("mssql")]  ISchemaProvider sqlSchemaProvider,
             ILoggerFactory loggerFactory,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
@@ -158,13 +166,20 @@ public static class ChatEndpoints
 
                 if (routingEngine.IsToolsEnabled(request))
                 {
-                    // Valitse oikea backend ja tool-kuvaukset policyn perusteella
-                    var backend = routingEngine.GetQueryBackend(request);
-                    var queryService = backend == "mssql" ? sqlQueryService : cosmosQueryService;
-                    var tools       = backend == "mssql" ? SqlTools : CosmosTools;
-                    var systemPrompt = backend == "mssql" ? SqlSystemPrompt : CosmosSystemPrompt;
+                    // Valitse oikea backend, tool-kuvaukset ja schema provider policyn perusteella
+                    var backend        = routingEngine.GetQueryBackend(request);
+                    var queryService   = backend == "mssql" ? sqlQueryService   : cosmosQueryService;
+                    var schemaProvider = backend == "mssql" ? sqlSchemaProvider : cosmosSchemaProvider;
+                    var tools          = backend == "mssql" ? SqlTools          : CosmosTools;
 
-                    logger.LogInformation("Tools policy resolved. Backend={Backend}", backend);
+                    // Hae skeema dynaamisesti (60 min välimuisti) ja injektoi system promptiin
+                    var schema       = await schemaProvider.GetSchemaAsync(cancellationToken);
+                    var systemPrompt = backend == "mssql"
+                        ? BuildSqlSystemPrompt(schema)
+                        : BuildCosmosSystemPrompt(schema);
+
+                    logger.LogInformation("Tools policy resolved. Backend={Backend}, SchemaLength={SchemaLength}",
+                        backend, schema.Length);
 
                     return await HandleWithToolsAsync(
                         request, requestId, modelChain, client, queryService, tools, systemPrompt, logger, cancellationToken);

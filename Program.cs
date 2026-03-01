@@ -47,6 +47,10 @@ builder.Services.Configure<SqlOptions>(
 builder.Services.AddKeyedSingleton<IQueryService, CosmosQueryService>("cosmos");
 builder.Services.AddKeyedSingleton<IQueryService, SqlQueryService>("mssql");
 
+// Keyed ISchemaProvider — dynaaminen skeemahaku välimuistilla (60 min)
+builder.Services.AddKeyedSingleton<ISchemaProvider, CosmosSchemaProvider>("cosmos");
+builder.Services.AddKeyedSingleton<ISchemaProvider, SqlSchemaProvider>("mssql");
+
 // Circuit breaker — singleton jotta tila säilyy kutsujen välillä
 builder.Services.AddSingleton<ICircuitBreaker, InMemoryCircuitBreaker>();
 

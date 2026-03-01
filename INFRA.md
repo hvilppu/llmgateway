@@ -28,11 +28,7 @@ az cognitiveservices account deployment create --name my-openai-resource --resou
 az cognitiveservices account deployment create --name my-openai-resource --resource-group rg-llmgateway-prod --deployment-name gpt4o-mini-deployment --model-name gpt-4o-mini --model-version "2024-07-18" --model-format OpenAI --sku-capacity 20 --sku-name Standard
 ```
 
-```bash
-az cognitiveservices account deployment create --name my-openai-resource --resource-group rg-llmgateway-prod --deployment-name text-embedding-3-small --model-name text-embedding-3-small --model-version "1" --model-format OpenAI --sku-capacity 10 --sku-name Standard
-```
-
-### 3. Luo Cosmos DB (RAG + Text-to-NoSQL)
+### 3. Luo Cosmos DB (Text-to-NoSQL)
 
 Luo tili:
 ```bash
@@ -61,7 +57,6 @@ param appName                 = 'xyz-llmgateway-prod'           # oltava globaal
 param azureOpenAIEndpoint     = 'https://my-openai-resource.openai.azure.com/'
 param gpt4DeploymentName      = 'gpt4-deployment'
 param gpt4oMiniDeploymentName = 'gpt4o-mini-deployment'
-param embeddingDeploymentName = 'text-embedding-3-small'
 param cosmosDatabaseName      = 'mydb'
 param cosmosContainerName     = 'documents'
 param sqlAdminLogin           = 'sqladmin'                      # MS SQL -ylläpitäjän käyttäjänimi
@@ -144,38 +139,3 @@ Infra-muutokset: aja `infra.yml` manuaalisesti GitHub Actions → **Provision In
 | `.github/workflows/deploy.yml` | Koodi-deploy — käynnistyy automaattisesti push:lla |
 | `.github/workflows/infra.yml` | Infra-deploy — ajetaan manuaalisesti |
 
-## Embedding-mallin versio
-
-Tarkista mitä malleja Azure OpenAI -resurssissasi on saatavilla:
-
-```bash
-az cognitiveservices account list-models --name my-openai-resource --resource-group rg-llmgateway-prod --query "[?contains(name, 'embedding')].{name:name, version:version}" --output table
-```
-
-Sweden Centralissa yleensä toimivat:
-
-| Malli | Versio | Huomio |
-|-------|--------|--------|
-| `text-embedding-3-small` | `1` | Suositeltu — pienin ja halvin |
-| `text-embedding-3-large` | `1` | Tarkempi, kalliimpi |
-| `text-embedding-ada-002` | `2` | Vanhempi, laajasti saatavilla |
-
-Jos saat virheen `Standard is not supported`, käytä `GlobalStandard`:
-
-```bash
-az cognitiveservices account deployment create --name my-openai-resource --resource-group rg-llmgateway-prod --deployment-name text-embedding-3-small --model-name text-embedding-3-small --model-version "1" --model-format OpenAI --sku-capacity 10 --sku-name GlobalStandard
-```
-
-Kun tiedät oikean mallin ja version, päivitä `infra/main.bicepparam`:
-
-```
-param embeddingDeploymentName = 'text-embedding-3-small'   # deployment-nimi jonka annoit
-```
-
-ja `appsettings.json`:
-
-```json
-"AzureOpenAI": {
-  "EmbeddingDeployment": "text-embedding-3-small"
-}
-```

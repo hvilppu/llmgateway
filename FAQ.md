@@ -17,8 +17,6 @@ Vastauksia yleisimpiin kysymyksiin gatewayn toimintaperiaatteesta, virhetilantei
   - [Mistä tietää onko vastaus tullut kannasta vai LLM:n omasta muistista?](#mistä-tietää-onko-vastaus-tullut-kannasta-vai-llmn-omasta-muistista)
 - [Tietoturva](#tietoturva)
   - [Voiko prompt injection -hyökkäyksellä saada LLM:n ajamaan DELETE-kyselyn?](#voiko-prompt-injection--hyökkäyksellä-saada-llmn-ajamaan-delete-kyselyn)
-- [RAG ja data](#rag-ja-data)
-  - [Miksi RAG ei sovi pelkälle numeeriselle datalle?](#miksi-rag-ei-sovi-pelkälle-numeeriselle-datalle)
 - [Kustannukset ja tokenit](#kustannukset-ja-tokenit)
   - [Mistä token-kulutus muodostuu tools-policyssä — miksi se on suurempi kuin suorassa kutsussa?](#mistä-token-kulutus-muodostuu-tools-policyssä--miksi-se-on-suurempi-kuin-suorassa-kutsussa)
   - [Miten agenttiloop kasvattaa kustannuksia verrattuna yksittäiseen kutsuun?](#miten-agenttiloop-kasvattaa-kustannuksia-verrattuna-yksittäiseen-kutsuun)
@@ -120,32 +118,24 @@ Kyllä, epäsuorasti. Temperature `0.2` on asetettu matalaksi tarkoituksella —
 
 ---
 
-### Mitkä ovat erot suoran LLM-vastauksen, Text-to-SQL:n ja RAG-haun välillä?
+### Mitkä ovat erot suoran LLM-vastauksen ja Text-to-SQL:n välillä?
 
-Kolme eri tapaa tuottaa vastaus — jokaisella eri vahvuudet ja rajoitukset:
-
-| | Suora LLM | Text-to-SQL | RAG |
-|--|-----------|-------------|-----|
-| **Datan lähde** | Mallin koulutusdata | Cosmos DB SQL-kysely | Cosmos DB vektorihaku |
-| **Sopii kun** | Selittävät kysymykset, yleistieto | Tarkat luvut, aggregaatiot | Semanttiset haut, tekstikuvaukset |
-| **Esimerkki** | "Miksi talvi on kylmä?" | "Mikä oli keskilämpötila helmikuussa?" | "Miltä Helsingin talvi tuntui?" |
-| **Vastauksen tuoreus** | Koulutushetkeen asti | Reaaliaikainen | Reaaliaikainen |
-| **Virheriskit** | Hallusinointi — malli voi keksiä lukuja | Väärä SQL tai väärä schema | Väärä dokumentti jos embedding huono |
-| **Tila tässä projektissa** | Käytössä (kaikki policyit) | Käytössä (`tools`-policy) | Koodissa, ei aktiivisena työkaluna |
+| | Suora LLM | Text-to-SQL |
+|--|-----------|-------------|
+| **Datan lähde** | Mallin koulutusdata | Cosmos DB tai MS SQL -kysely |
+| **Sopii kun** | Selittävät kysymykset, yleistieto | Tarkat luvut, aggregaatiot |
+| **Esimerkki** | "Miksi talvi on kylmä?" | "Mikä oli keskilämpötila helmikuussa?" |
+| **Vastauksen tuoreus** | Koulutushetkeen asti | Reaaliaikainen |
+| **Virheriskit** | Hallusinointi — malli voi keksiä lukuja | Väärä SQL tai väärä schema |
+| **Tila tässä projektissa** | Käytössä (kaikki policyit) | Käytössä (`tools` ja `tools_sql` -policyit) |
 
 **Milloin kukin on oikea valinta:**
 
 - **Suora LLM**: kysymys ei vaadi tuoretta tai omaa dataa — "selitä", "miksi", "miten yleensä"
 - **Text-to-SQL**: tarvitaan tarkka luku tai laskutulos omasta datasta — aggregaatiot, suodatukset, vertailut
-- **RAG**: tarvitaan kontekstia tai kuvausta jota ei voi ilmaista SQL:nä — "kerro", "kuvaile", "mitä tapahtui"
 
-**Miksi Text-to-SQL on tässä projektissa parempi kuin RAG puhtaalle datalle:**
-
-Nykyinen data on täysin strukturoitua (`paikkakunta`, `pvm`, `lampotila`). SQL osaa laskea täsmälleen oikean vastauksen. RAG hakisi lähimmät dokumentit embeddingin perusteella mutta ei pystyisi laskemaan keskiarvoa — se palauttaisi yksittäisiä mittauspisteitä joista LLM laskisi itse, epätarkasti.
-
-→ `ChatEndpoints.cs`: `SystemPrompt` määrittää milloin työkalu kutsutaan
-→ `QueryService.cs`: Text-to-SQL toteutus
-→ `RagService.cs`: RAG-toteutus (ei aktiivinen tool)
+→ `ChatEndpoints.cs`: `BuildCosmosSystemPrompt` / `BuildSqlSystemPrompt` määrittävät milloin työkalu kutsutaan
+→ `QueryService.cs`: Text-to-SQL toteutus (Cosmos DB ja MS SQL)
 
 ---
 
@@ -268,33 +258,6 @@ Jälkimmäinen on realistisempi riski tässä projektissa — esim. `SELECT * FR
 
 → `QueryService.cs`, `ExecuteQueryAsync`: SELECT-tarkistus koodissa
 → `ChatEndpoints.cs`, `SystemPrompt`: LLM:n ohjeistus aiherajaukseen
-
----
-
-## RAG ja data
-
-### Miksi RAG ei sovi pelkälle numeeriselle datalle?
-
-Embedding ei ymmärrä numeroita — se ymmärtää merkityksiä.
-
-Kun tekstistä `"Helsinki 2025-02-15 -12.3"` tehdään embedding, malli muuntaa sen vektoriksi sen perusteella mitä sanat *tarkoittavat*. Numero `-12.3` on mallille pelkkä merkkijono — se ei tiedä että se on kylmempi kuin `-5.0`.
-
-Tämä aiheuttaa kaksi konkreettista ongelmaa:
-
-**1. Haku löytää väärät dokumentit**
-
-Kysymys `"kylmin päivä helmikuussa"` tuottaa vektorin joka hakee dokumentteja joissa on sanoja kuten "kylmin" tai "helmikuu". Dokumentti `"Helsinki 2025-02-08 -22.1"` ei sisällä näitä sanoja, joten se ei nouse hakutuloksiin — vaikka se on juuri oikea vastaus.
-
-**2. Laskutoimitukset eivät onnistu**
-
-RAG palauttaa joukon dokumentteja, ei laskutulosta. Jos kysytään keskilämpötilaa, LLM saisi esim. 5 yksittäistä mittauspistettä ja joutuisi laskemaan keskiarvon itse. LLM ei ole laskin — se voi laskea väärin tai pyöristää epätarkasti.
-
-SQL sen sijaan laskee `AVG(c.content.lampotila)` Cosmos DB:ssä palvelinpuolella ja palauttaa yhden tarkan luvun.
-
-**RAG toimii kun dokumentissa on luonnollista kieltä** joka kuvaa merkityksiä: "poikkeuksellisen kylmä", "meri jäätyi", "tuulinen". Silloin embedding löytää semanttisesti oikeat dokumentit.
-
-→ `RagService.cs`: VectorDistance-haku — toimii oikein tekstidatalle
-→ `QueryService.cs`: SQL-aggregaatiot — oikea työkalu numeeriselle datalle
 
 ---
 

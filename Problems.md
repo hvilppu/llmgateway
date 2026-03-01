@@ -134,19 +134,13 @@ Käyttäjä C → Azure OpenAI (GPT-4) → Cosmos DB → Azure OpenAI → vastau
 
 ### Pullonkaula 7 — Cosmos DB:n oletusindeksointipolitiikka on liian laaja 🔴
 
-Cosmos DB indeksoi oletuksena **jokaisen kentän jokaisesta dokumentista**. Nykyisessä schemassa indeksoidaan `id`, `content.paikkakunta`, `content.pvm`, `content.lampotila` ja `embedding` (1 536 floattia).
+Cosmos DB indeksoi oletuksena **jokaisen kentän jokaisesta dokumentista**. Nykyisessä schemassa tarpeelliset kentät ovat vain `content.paikkakunta`, `content.pvm` ja `content.lampotila`.
 
-1M dokumentilla embedding-kentän indeksointi on erityisen tuhoisaa:
-- Embedding on 1 536-ulotteinen float-vektori
-- Oletusindeksi yrittää indeksoida sen range-indeksiksi
-- Tämä kasvattaa **indeksin koon** ja **kirjoituskustannuksen** moninkertaiseksi
+1M dokumentilla turha indeksointi kasvattaa kirjoituskustannuksia merkittävästi:
+- Yhden dokumentin lisääminen (`upsert`) maksaa normaalisti ~10 RU
+- Oletusindeksillä kaikista kentistä kustannus voi moninkertaistua
 
-**Konkreettinen seuraus kirjoituksessa:**
-Yhden dokumentin lisääminen (`upsert`) maksaa normaalisti ~10 RU. Embeddingillä oletusindeksillä se voi nousta **100–500 RU:hun** per dokumentti. 1M dokumentin seed = 100M–500M RU.
-
-**Korjaus:** Määritä eksplisiittinen indeksointipolitiikka joka:
-- Sisällyttää vain `content.paikkakunta`, `content.pvm`, `content.lampotila`
-- Sulkee pois `embedding` range-indeksistä (vektori-indeksi on erillinen)
+**Korjaus:** Määritä eksplisiittinen indeksointipolitiikka joka sisällyttää vain kyselykentät:
 
 ```json
 {
@@ -157,11 +151,10 @@ Yhden dokumentin lisääminen (`upsert`) maksaa normaalisti ~10 RU. Embeddingill
       { "path": "/content/lampotila/?" }
     ],
     "excludedPaths": [
-      { "path": "/embedding/*" },
       { "path": "/*" }
     ]
   }
 }
 ```
 
-→ `infra/main.bicep`: Cosmos DB container -määrittelyssä ei eksplisiittistä `indexingPolicy`-osioita
+→ `infra/main.bicep`: Cosmos DB container -määrittelyssä ei eksplisiittistä `indexingPolicy`-osiota

@@ -33,6 +33,9 @@ Services/
                                         SqlQueryService    — MS SQL / Azure SQL T-SQL SELECT -kyselyt
                                         CosmosOptions      — Cosmos DB -yhteysasetukset
                                         SqlOptions         — MS SQL -yhteysasetukset
+  SchemaService.cs                      ISchemaProvider
+                                        CosmosSchemaProvider — skeema näytedokumentista (TOP 1), 60 min välimuisti
+                                        SqlSchemaProvider    — skeema INFORMATION_SCHEMA.COLUMNS, 60 min välimuisti
 ```
 
 ### Namespacet
@@ -55,7 +58,8 @@ Services/
 - Circuit breaker in-memory toteutuksella
 - Policy-pohjainen model routing
 - `Microsoft.Data.SqlClient` MS SQL -kyselyihin
-- Keyed DI (`AddKeyedSingleton`) — molemmat query-backendit aktiivisena samanaikaisesti
+- Keyed DI (`AddKeyedSingleton`) — molemmat query- ja schema-backendit aktiivisena samanaikaisesti
+- Dynaaminen skeemahaku välimuistilla (`ISchemaProvider`) — system prompt rakennetaan ajonaikana
 
 ## Konfiguraatio (appsettings)
 
@@ -107,10 +111,20 @@ Services/
 ## Query-backendit (agenttiloop)
 
 Backend valitaan automaattisesti policyn mukaan `ChatEndpoints.MapChatEndpoints`:ssa:
-- **Cosmos DB** (`QueryBackend: "cosmos"`): Cosmos DB SQL NoSQL-syntaksi, schema `c.content.paikkakunta / pvm / lampotila`
-- **MS SQL** (`QueryBackend: "mssql"`): T-SQL-syntaksi, taulu `mittaukset`, sarakkeet `id / paikkakunta / pvm / lampotila`
+- **Cosmos DB** (`QueryBackend: "cosmos"`): Cosmos DB SQL NoSQL-syntaksi
+- **MS SQL** (`QueryBackend: "mssql"`): T-SQL-syntaksi
 
-Molemmat backendit rekisteröity keyed serviceiksi (`"cosmos"` ja `"mssql"`), jolloin molemmat ovat aktiivisena samanaikaisesti. Backendille annetaan myös eri system prompt ja tool-kuvaus, jotta LLM osaa generoida oikean SQL-syntaksin.
+Molemmat backendit rekisteröity keyed serviceiksi (`"cosmos"` ja `"mssql"`), jolloin molemmat ovat aktiivisena samanaikaisesti. Backendille annetaan eri system prompt, tool-kuvaus ja skeema, jotta LLM osaa generoida oikean SQL-syntaksin.
+
+## Dynaaminen skeemahaku
+
+Skeema haetaan tietokannasta ajonaikana ja injektoidaan system promptiin ennen LLM-kutsua:
+- **Cosmos DB**: `SELECT TOP 1 * FROM c` → JSON-rakenne puretaan rekursiivisesti pistenotaatiolla (`c.content.paikkakunta` jne.)
+- **MS SQL**: `INFORMATION_SCHEMA.COLUMNS` → taulut ja sarakkeet tyyppitinetoineen
+
+Molemmat käyttävät `SemaphoreSlim` double-check -välimuistia (60 min). Jos haku epäonnistuu, system prompt rakentuu ilman skeemaa — pyyntö ei kaadu.
+
+Keyed DI: `ISchemaProvider` rekisteröity avaimilla `"cosmos"` ja `"mssql"` samoin kuin `IQueryService`.
 
 ## Agenttiloop — SQL-generoinnin ohjaus
 
@@ -118,13 +132,13 @@ Molemmat backendit rekisteröity keyed serviceiksi (`"cosmos"` ja `"mssql"`), jo
 
 LLM generoi SQL-kyselyt itse saamansa tool-kuvauksen ja system promptin perusteella. Kummallekin backendille on omat rajoitukset jotka on kirjattu sekä system promptiin että tool-kuvaukseen:
 
-**Cosmos DB (`CosmosSystemPrompt` + `CosmosQueryDatabaseTool`):**
+**Cosmos DB (`BuildCosmosSystemPrompt` + `CosmosQueryDatabaseTool`):**
 - `ORDER BY` + `GROUP BY` ei toimi yhdessä — kielletty eksplisiittisesti
 - Ei `MONTH()` / `YEAR()` -funktioita — käytä `STARTSWITH` tai `SUBSTRING(c.content.pvm, 0, 7)`
 - Kuukausittainen ryhmittely: `GROUP BY SUBSTRING(c.content.pvm, 0, 7)`
 - Min/max kuukaudesta: hae kaikki kuukaudet ilman ORDER BY, päättele itse tuloksista
 
-**MS SQL (`SqlSystemPrompt` + `SqlQueryDatabaseTool`):**
+**MS SQL (`BuildSqlSystemPrompt` + `SqlQueryDatabaseTool`):**
 - `LIMIT` ei ole T-SQL:ää — käytä `TOP N`
 - Kielto on sekä system promptissa että tool-kuvauksessa (LLM unohtaa helposti agenttiloopin aikana)
 
@@ -182,26 +196,30 @@ OpenAPI-schema: `http://localhost:5079/openapi/v1.json`
 ### Function calling -agenttiloop, Cosmos DB (policy: "tools")
 1. POST /api/chat `{ "message": "Mikä oli keskilämpötila Helsingissä helmikuussa?", "policy": "tools" }`
 2. `ChatEndpoints` → `IsToolsEnabled` → true → `HandleWithToolsAsync`
-3. `GetQueryBackend` → `"cosmos"` → `CosmosQueryService` + Cosmos-tool-kuvaus + Cosmos-system prompt
-4. Rakennetaan messages-lista + tool-määrittelyt
-5. `AzureOpenAIClient.GetRawCompletionAsync(messages, tools, "gpt4")`
-6. Azure palauttaa `finish_reason: "tool_calls"` → `query_database(sql="SELECT AVG(c.content.lampotila) ...")`
-7. `CosmosQueryService.ExecuteQueryAsync(sql)` → JSON-tulokset
-8. Lisätään tool-tulos messages-listaan, loop uudelleen
-9. Azure palauttaa `finish_reason: "stop"` → lopullinen vastaus
-10. Vastaus: `{ "reply": "Helmikuussa 2025 keskilämpötila Helsingissä oli -3.2°C.", ... }`
+3. `GetQueryBackend` → `"cosmos"` → `CosmosQueryService` + `CosmosSchemaProvider`
+4. `CosmosSchemaProvider.GetSchemaAsync()` → skeema välimuistista tai `SELECT TOP 1 * FROM c`
+5. `BuildCosmosSystemPrompt(schema)` → system prompt skeemalla injektoituna
+6. Rakennetaan messages-lista + tool-määrittelyt
+7. `AzureOpenAIClient.GetRawCompletionAsync(messages, tools, "gpt4")`
+8. Azure palauttaa `finish_reason: "tool_calls"` → `query_database(sql="SELECT AVG(c.content.lampotila) ...")`
+9. `CosmosQueryService.ExecuteQueryAsync(sql)` → JSON-tulokset
+10. Lisätään tool-tulos messages-listaan, loop uudelleen
+11. Azure palauttaa `finish_reason: "stop"` → lopullinen vastaus
+12. Vastaus: `{ "reply": "Helmikuussa 2025 keskilämpötila Helsingissä oli -3.2°C.", ... }`
 
 ### Function calling -agenttiloop, MS SQL (policy: "tools_sql")
 1. POST /api/chat `{ "message": "Mikä oli keskilämpötila Helsingissä helmikuussa?", "policy": "tools_sql" }`
 2. `ChatEndpoints` → `IsToolsEnabled` → true → `HandleWithToolsAsync`
-3. `GetQueryBackend` → `"mssql"` → `SqlQueryService` + SQL-tool-kuvaus + SQL-system prompt
-4. Rakennetaan messages-lista + tool-määrittelyt
-5. `AzureOpenAIClient.GetRawCompletionAsync(messages, tools, "gpt4")`
-6. Azure palauttaa `finish_reason: "tool_calls"` → `query_database(sql="SELECT AVG(lampotila) FROM mittaukset ...")`
-7. `SqlQueryService.ExecuteQueryAsync(sql)` → JSON-tulokset (Microsoft.Data.SqlClient)
-8. Lisätään tool-tulos messages-listaan, loop uudelleen
-9. Azure palauttaa `finish_reason: "stop"` → lopullinen vastaus
-10. Vastaus: `{ "reply": "Helmikuussa 2025 keskilämpötila Helsingissä oli -3.2°C.", ... }`
+3. `GetQueryBackend` → `"mssql"` → `SqlQueryService` + `SqlSchemaProvider`
+4. `SqlSchemaProvider.GetSchemaAsync()` → skeema välimuistista tai `INFORMATION_SCHEMA.COLUMNS`
+5. `BuildSqlSystemPrompt(schema)` → system prompt skeemalla injektoituna
+6. Rakennetaan messages-lista + tool-määrittelyt
+7. `AzureOpenAIClient.GetRawCompletionAsync(messages, tools, "gpt4")`
+8. Azure palauttaa `finish_reason: "tool_calls"` → `query_database(sql="SELECT AVG(lampotila) FROM mittaukset ...")`
+9. `SqlQueryService.ExecuteQueryAsync(sql)` → JSON-tulokset (Microsoft.Data.SqlClient)
+10. Lisätään tool-tulos messages-listaan, loop uudelleen
+11. Azure palauttaa `finish_reason: "stop"` → lopullinen vastaus
+12. Vastaus: `{ "reply": "Helmikuussa 2025 keskilämpötila Helsingissä oli -3.2°C.", ... }`
 
 ## Git
 Important: I make commits manually DO NOT EVER DO COMMITS

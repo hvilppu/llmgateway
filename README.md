@@ -1,6 +1,6 @@
 # LlmGateway
 
-ASP.NET Core 10 minimal API gateway for Azure OpenAI, with retry, timeout, circuit breaker, RAG and function calling.
+ASP.NET Core 10 minimal API gateway for Azure OpenAI, with retry, timeout, circuit breaker and function calling.
 
 Infrastruktuuri ja käyttöönotto: [INFRA.md](INFRA.md)
 
@@ -14,7 +14,8 @@ Gateway rajoittaa LLM:n vastaamaan **ainoastaan Suomen kaupunkien lämpötila- j
 |--------|-------|--------------|-----------------|
 | *(ei policyä)* / `chat_default` | gpt-4o-mini | Ei — LLM:n oma tieto | Ei suositella datakysymyksiin |
 | `critical` | gpt-4o | Ei — LLM:n oma tieto | Vaativampi päättely ilman dataa |
-| `tools` | gpt-4o | **Kyllä** — kyselee Cosmos DB:stä | Kaikki datakysymykset |
+| `tools` | gpt-4o | **Kyllä** — kyselee Cosmos DB:stä (NoSQL) | Datakysymykset, Cosmos DB -backend |
+| `tools_sql` | gpt-4o | **Kyllä** — kyselee MS SQL:stä (T-SQL) | Datakysymykset, MS SQL -backend |
 
 `tools`-policyssä LLM päättää itse kutsuuko `query_database`-työkalua:
 - *"Mikä oli lämpötilan keskiarvo Helsingissä helmikuussa 2025?"* → kyselee kannasta
@@ -43,12 +44,3 @@ curl -X POST https://llmgateway-prod.azurewebsites.net/api/chat -H "Content-Type
 
 
 
-# Myöhemmin
-
-RAG:in myöhemmin käyttöön, tarvitaan:
-  1. Container uudelleen vektori-indeksillä (poistettu     
-  komento palautetaan)
-  2. Dokumenttien indeksointi — ajaa embedding-API:n       
-  jokaiselle dokumentille ja tallentaa embedding-kenttään 
-
-Toinen lähde kuten TableContainer

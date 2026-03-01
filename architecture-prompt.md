@@ -47,11 +47,25 @@ Draw a software architecture diagram for an ASP.NET Core (.NET 10) API gateway c
 - Opens after `FailureThreshold` consecutive failures
 - Stays open for `BreakDurationSeconds`, then enters Half-Open
 
-**CosmosQueryService** (singleton)
+**CosmosQueryService** (keyed singleton: "cosmos")
 - `ExecuteQueryAsync(sql)`: tool handler for `query_database`
 - Validates SQL starts with SELECT (rejects DELETE/UPDATE/DROP)
-- Executes Cosmos DB SQL query
+- Executes Cosmos DB NoSQL SQL query
 - Returns results as JSON array string
+
+**SqlQueryService** (keyed singleton: "mssql")
+- `ExecuteQueryAsync(sql)`: tool handler for `query_database`
+- Validates SQL starts with SELECT (rejects DELETE/UPDATE/DROP)
+- Executes T-SQL query via `Microsoft.Data.SqlClient`
+- Returns results as JSON array string
+
+**CosmosSchemaProvider** (keyed singleton: "cosmos")
+- `GetSchemaAsync()`: fetches schema from `SELECT TOP 1 * FROM c`, flattens JSON paths recursively
+- Caches result for 60 minutes; returns empty string on failure (request does not fail)
+
+**SqlSchemaProvider** (keyed singleton: "mssql")
+- `GetSchemaAsync()`: fetches schema from `INFORMATION_SCHEMA.COLUMNS`
+- Caches result for 60 minutes; returns empty string on failure (request does not fail)
 
 **Azure OpenAI Chat API** (external)
 - `POST /openai/deployments/{deploymentName}/chat/completions`
@@ -59,13 +73,14 @@ Draw a software architecture diagram for an ASP.NET Core (.NET 10) API gateway c
 - Supports `tools` parameter for function calling
 
 **Cosmos DB NoSQL** (external)
-- Container with documents: `{ id, content: { paikkakunta, pvm, lampotila }, embedding: float[] }`
-- Vector index on `embedding` field for `VectorDistance` queries
+- Container with documents: `{ id, content: { paikkakunta, pvm, lampotila } }`
+- Schema fetched dynamically at runtime by `CosmosSchemaProvider`
 
 **appsettings.json** (configuration)
 - `AzureOpenAI`: Endpoint, ApiKey, ApiVersion, TimeoutMs, MaxRetries, RetryDelayMs, Deployments
 - `Policies`: named policies with PrimaryModel, Fallbacks, ToolsEnabled
-- `CosmosRag`: ConnectionString, DatabaseName, ContainerName, TopK, VectorField, ContentField
+- `CosmosRag`: ConnectionString, DatabaseName, ContainerName
+- `Sql`: ConnectionString
 - `CircuitBreaker`: FailureThreshold, BreakDurationSeconds
 
 **OpenAPI** (`GET /openapi/v1.json`)
@@ -134,12 +149,13 @@ Draw a software architecture diagram for an ASP.NET Core (.NET 10) API gateway c
 
 ### Policy Routing Examples
 
-| `request.policy` | PrimaryModel | ToolsEnabled | Behaviour              |
-|------------------|--------------|--------------|------------------------|
-| `null` / missing | `gpt4oMini`  | false        | Simple chat call       |
-| `"critical"`     | `gpt4`       | false        | Simple + fallback chain|
-| `"tools"`        | `gpt4`       | true         | Function calling loop  |
-| unknown value    | `gpt4oMini`  | false        | Fallback to chat_default|
+| `request.policy` | PrimaryModel | ToolsEnabled | QueryBackend | Behaviour              |
+|------------------|--------------|--------------|--------------|------------------------|
+| `null` / missing | `gpt4oMini`  | false        | —            | Simple chat call       |
+| `"critical"`     | `gpt4`       | false        | —            | Simple + fallback chain|
+| `"tools"`        | `gpt4`       | true         | `"cosmos"`   | Function calling loop, Cosmos DB NoSQL |
+| `"tools_sql"`    | `gpt4`       | true         | `"mssql"`    | Function calling loop, MS SQL T-SQL |
+| unknown value    | `gpt4oMini`  | false        | —            | Fallback to chat_default|
 
 ---
 
