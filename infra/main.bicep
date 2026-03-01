@@ -37,9 +37,6 @@ param gpt4DeploymentName string
 @description('Azure deployment name for gpt4oMini.')
 param gpt4oMiniDeploymentName string
 
-@description('Azure OpenAI embedding deployment name, e.g. text-embedding-3-small.')
-param embeddingDeploymentName string = 'text-embedding-3-small'
-
 // ── Cosmos DB (RAG) ───────────────────────────────────────────────────────────
 
 @secure()
@@ -51,9 +48,6 @@ param cosmosDatabaseName string = 'ragdb'
 
 @description('Cosmos DB container name (must have vector index on embedding field).')
 param cosmosContainerName string = 'documents'
-
-@description('Number of documents to retrieve per query.')
-param cosmosTopK int = 5
 
 // ── MS SQL ────────────────────────────────────────────────────────────────────
 
@@ -139,7 +133,6 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'AzureOpenAI__RetryDelayMs',   value: string(azureOpenAIRetryDelayMs) }
         { name: 'AzureOpenAI__Deployments__gpt4',      value: gpt4DeploymentName }
         { name: 'AzureOpenAI__Deployments__gpt4oMini', value: gpt4oMiniDeploymentName }
-        { name: 'AzureOpenAI__EmbeddingDeployment',    value: embeddingDeploymentName }
 
         // Policies
         { name: 'Policies__chat_default__PrimaryModel',  value: 'gpt4oMini' }
@@ -156,7 +149,6 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'CosmosRag__ConnectionString', value: cosmosConnectionString }
         { name: 'CosmosRag__DatabaseName',     value: cosmosDatabaseName }
         { name: 'CosmosRag__ContainerName',    value: cosmosContainerName }
-        { name: 'CosmosRag__TopK',             value: string(cosmosTopK) }
 
         // MS SQL (tools_sql-policy)
         { name: 'Sql__ConnectionString', value: 'Server=${sqlServer.properties.fullyQualifiedDomainName};Database=${sqlDatabaseName};User Id=${sqlAdminLogin};Password=${sqlAdminPassword};Encrypt=True;TrustServerCertificate=False;' }
