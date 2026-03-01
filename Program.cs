@@ -30,15 +30,14 @@ builder.Services.Configure<PolicyOptions>(options =>
             s => s.Get<PolicyConfig>() ?? new PolicyConfig());
 });
 
-// RAG — Cosmos DB vektorihaulla
-builder.Services.Configure<CosmosRagOptions>(
+// Cosmos DB -yhteys
+builder.Services.Configure<CosmosOptions>(
     builder.Configuration.GetSection("CosmosRag"));
 builder.Services.AddSingleton<CosmosClient>(sp =>
 {
-    var opts = sp.GetRequiredService<IOptions<CosmosRagOptions>>().Value;
+    var opts = sp.GetRequiredService<IOptions<CosmosOptions>>().Value;
     return new CosmosClient(opts.ConnectionString);
 });
-builder.Services.AddSingleton<IRagService, CosmosRagService>();
 
 // MS SQL -konfiguraatio
 builder.Services.Configure<SqlOptions>(

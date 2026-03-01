@@ -28,10 +28,10 @@ Routing/
                                         IRoutingEngine.GetQueryBackend(request)
 
 Services/
-  RagService.cs                         IRagService, CosmosRagService, CosmosRagOptions (vektorihaku)
   QueryService.cs                       IQueryService
                                         CosmosQueryService — Cosmos DB NoSQL SELECT -kyselyt
                                         SqlQueryService    — MS SQL / Azure SQL T-SQL SELECT -kyselyt
+                                        CosmosOptions      — Cosmos DB -yhteysasetukset
                                         SqlOptions         — MS SQL -yhteysasetukset
 ```
 
@@ -67,7 +67,6 @@ Services/
   "TimeoutMs": 15000,
   "MaxRetries": 2,
   "RetryDelayMs": 500,
-  "EmbeddingDeployment": "text-embedding-3-small",
   "Deployments": {
     "gpt4": "YOUR-GPT4-DEPLOYMENT-NAME",
     "gpt4oMini": "YOUR-GPT4O-MINI-DEPLOYMENT-NAME"
@@ -82,10 +81,7 @@ Services/
 "CosmosRag": {
   "ConnectionString": "AccountEndpoint=...",
   "DatabaseName": "ragdb",
-  "ContainerName": "documents",
-  "TopK": 5,
-  "VectorField": "embedding",
-  "ContentField": "content"
+  "ContainerName": "documents"
 },
 "Sql": {
   "ConnectionString": "Server=...;Database=...;..."

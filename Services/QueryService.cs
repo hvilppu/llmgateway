@@ -13,6 +13,14 @@ public interface IQueryService
     Task<string> ExecuteQueryAsync(string sql, CancellationToken cancellationToken = default);
 }
 
+// Cosmos DB -yhteysasetukset. Sidotaan appsettings-osioon "CosmosRag".
+public class CosmosOptions
+{
+    public string ConnectionString { get; set; } = string.Empty;
+    public string DatabaseName { get; set; } = string.Empty;
+    public string ContainerName { get; set; } = string.Empty;
+}
+
 // MS SQL -yhteysasetukset.
 public class SqlOptions
 {
@@ -71,18 +79,17 @@ public class SqlQueryService : IQueryService
 }
 
 // Suorittaa LLM:n generoimia Cosmos DB SQL -kyselyitä.
-// Käyttää samaa CosmosRagOptions-konfiguraatiota kuin CosmosRagService (sama kanta/container).
 public class CosmosQueryService : IQueryService
 {
     private readonly CosmosClient _cosmosClient;
-    private readonly CosmosRagOptions _options;
+    private readonly CosmosOptions _options;
     private readonly ILogger<CosmosQueryService> _logger;
 
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
 
     public CosmosQueryService(
         CosmosClient cosmosClient,
-        IOptions<CosmosRagOptions> options,
+        IOptions<CosmosOptions> options,
         ILogger<CosmosQueryService> logger)
     {
         _cosmosClient = cosmosClient;

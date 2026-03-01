@@ -15,7 +15,7 @@ public class QueryServiceTests
     private static CosmosQueryService CreateCosmosService() =>
         new CosmosQueryService(
             new CosmosClient("AccountEndpoint=https://fake.documents.azure.com:443/;AccountKey=dGVzdA==;"),
-            Options.Create(new CosmosRagOptions
+            Options.Create(new CosmosOptions
             {
                 ConnectionString = "fake",
                 DatabaseName = "testdb",

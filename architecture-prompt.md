@@ -37,7 +37,6 @@ Draw a software architecture diagram for an ASP.NET Core (.NET 10) API gateway c
 **AzureOpenAIClient** (typed HttpClient)
 - `GetChatCompletionAsync`: simple single-shot chat call (retry + circuit breaker)
 - `GetRawCompletionAsync`: chat call with tool definitions, returns raw Azure response including `finish_reason` and `tool_calls`
-- `GetEmbeddingAsync`: POST to Embeddings API for RAG vector generation
 - Per-request timeout via `CancellationTokenSource.CancelAfter`
 - Retry loop up to `MaxRetries` with linear delay (`RetryDelayMs * attemptNumber`)
 - Calls `ICircuitBreaker.RecordFailure/RecordSuccess`
@@ -47,12 +46,6 @@ Draw a software architecture diagram for an ASP.NET Core (.NET 10) API gateway c
 - States: Closed → Open → Half-Open → Closed
 - Opens after `FailureThreshold` consecutive failures
 - Stays open for `BreakDurationSeconds`, then enters Half-Open
-
-**CosmosRagService** (singleton, ei aktiivinen tool)
-- `RetrieveContextAsync(query)`: vektorihaku Cosmos DB:stä
-- Calls `GetEmbeddingAsync(query)` to get query vector
-- Runs `VectorDistance` query on Cosmos DB container
-- Returns top-K document content strings concatenated
 
 **CosmosQueryService** (singleton)
 - `ExecuteQueryAsync(sql)`: tool handler for `query_database`
@@ -65,16 +58,12 @@ Draw a software architecture diagram for an ASP.NET Core (.NET 10) API gateway c
 - Deployments: `gpt4`, `gpt4oMini`
 - Supports `tools` parameter for function calling
 
-**Azure OpenAI Embeddings API** (external)
-- `POST /openai/deployments/{embeddingDeployment}/embeddings`
-- Deployment: `text-embedding-3-small`
-
 **Cosmos DB NoSQL** (external)
 - Container with documents: `{ id, content: { paikkakunta, pvm, lampotila }, embedding: float[] }`
 - Vector index on `embedding` field for `VectorDistance` queries
 
 **appsettings.json** (configuration)
-- `AzureOpenAI`: Endpoint, ApiKey, ApiVersion, TimeoutMs, MaxRetries, RetryDelayMs, EmbeddingDeployment, Deployments
+- `AzureOpenAI`: Endpoint, ApiKey, ApiVersion, TimeoutMs, MaxRetries, RetryDelayMs, Deployments
 - `Policies`: named policies with PrimaryModel, Fallbacks, ToolsEnabled
 - `CosmosRag`: ConnectionString, DatabaseName, ContainerName, TopK, VectorField, ContentField
 - `CircuitBreaker`: FailureThreshold, BreakDurationSeconds
@@ -114,7 +103,6 @@ Draw a software architecture diagram for an ASP.NET Core (.NET 10) API gateway c
 - RoutingEngine → appsettings: reads `Policies` + `Deployments`
 - AzureOpenAIClient → appsettings: reads `AzureOpenAI` options
 - InMemoryCircuitBreaker → appsettings: reads `CircuitBreaker` options
-- CosmosRagService → appsettings: reads `CosmosRag` options
 - CosmosQueryService → appsettings: reads `CosmosRag` options
 
 ---

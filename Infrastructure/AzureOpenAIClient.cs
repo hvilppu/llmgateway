@@ -11,7 +11,6 @@ namespace LlmGateway.Infrastructure;
 public interface IAzureOpenAIClient
 {
     Task<ChatResponse> GetChatCompletionAsync(ChatRequest request, string requestId, string modelKey, string? systemPrompt = null, CancellationToken cancellationToken = default);
-    Task<float[]> GetEmbeddingAsync(string text, CancellationToken cancellationToken = default);
 
     // Raaka chat completion -kutsu function calling -agenttilooppia varten.
     // messages: koko viestihistoria (role+content+tool_calls+tool_call_id).
@@ -317,38 +316,6 @@ public class AzureOpenAIClient : IAzureOpenAIClient
         }
 
         throw lastException ?? new Exception("Azure OpenAI raw request failed with unknown error");
-    }
-
-    // Generoi embedding-vektori annetulle tekstille Azure OpenAI Embeddings API:lla.
-    // Käytetään RAG-haussa: tekstistä luodaan vektori, jolla haetaan Cosmos DB:stä lähimmät dokumentit.
-    public async Task<float[]> GetEmbeddingAsync(string text, CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrWhiteSpace(_options.EmbeddingDeployment))
-            throw new InvalidOperationException("AzureOpenAI:EmbeddingDeployment is not configured");
-
-        var url = $"/openai/deployments/{_options.EmbeddingDeployment}/embeddings?api-version={_options.ApiVersion}";
-        var payload = new { input = text };
-        var json = JsonSerializer.Serialize(payload, JsonOptions);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
-
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        cts.CancelAfter(_options.TimeoutMs);
-
-        using var response = await _httpClient.PostAsync(url, content, cts.Token);
-        var body = await response.Content.ReadAsStringAsync(cancellationToken);
-
-        if (!response.IsSuccessStatusCode)
-            throw new HttpRequestException($"Embedding API error: {(int)response.StatusCode} {response.ReasonPhrase}");
-
-        using var doc = JsonDocument.Parse(body);
-        var values = doc.RootElement
-            .GetProperty("data")[0]
-            .GetProperty("embedding")
-            .EnumerateArray()
-            .Select(e => e.GetSingle())
-            .ToArray();
-
-        return values;
     }
 
     // 408 Timeout, 429 Rate limit ja 5xx ovat tilapäisiä — kannattaa yrittää uudelleen.
