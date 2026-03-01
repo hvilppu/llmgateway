@@ -23,6 +23,7 @@ Vastauksia yleisimpiin kysymyksiin gatewayn toimintaperiaatteesta, virhetilantei
   - [Mistä token-kulutus muodostuu tools-policyssä — miksi se on suurempi kuin suorassa kutsussa?](#mistä-token-kulutus-muodostuu-tools-policyssä--miksi-se-on-suurempi-kuin-suorassa-kutsussa)
   - [Miten agenttiloop kasvattaa kustannuksia verrattuna yksittäiseen kutsuun?](#miten-agenttiloop-kasvattaa-kustannuksia-verrattuna-yksittäiseen-kutsuun)
   - [Miten estetään yllätyslasku — entä jos Jussi löytää API:n ja pystyy kutsumaan sitä?](#kustannussuojaus)
+- [Miksi/mikä/mitä](#miksimikämitä)
 
 ---
 
@@ -507,3 +508,52 @@ builder.Configuration.AddAzureKeyVault(
 → `AzureOpenAIClient.cs`: `TimeoutMs`, `max_tokens`
 → `CircuitBreaker.cs`: yhteyden katkaisu virheiden kasautuessa
 → `Routing.cs`: mallin valinta policyn perusteella
+
+
+<a id="miksimikämitä"></a>
+
+## Miksi/mikä/mitä
+
+**"Miksi käytät Azure OpenAI:ta etkä suoraan OpenAI:ta?"**
+> Koska Azure dataa ei lähde pois EU:sta — GDPR ja datan pysyminen EU:ssa. Lisäksi kaikki muu infrastruktuuri on jo Azuressa (App Service, Cosmos DB, SQL), joten pysytään samassa ekosysteemissä.
+
+---
+
+**"Mikä estää käyttäjää kirjoittamasta SQL-injektiota kysymyskenttään ja tuhoamasta tietokannan?"**
+> Käyttäjä ei kirjoita SQL:ää ollenkaan — hän kirjoittaa suomea. LLM kääntää sen SQL:ksi, ja koodissa tarkistetaan että kysely on SELECT. Perinteinen SQL-injektio ei toimi koska käyttäjän teksti menee LLM:lle syötteenä, ei suoraan kantaan.
+
+---
+
+**"Mitä tapahtuu jos Azure OpenAI kaatuu kesken käytön?"**
+> Ensin retry — kaksi uudelleenyritystä. Jos ne epäonnistuvat, circuit breaker laskee virheen. Viiden virheen jälkeen breaker avautuu 30 sekunniksi ja käyttäjä saa suoraan 503 ilman turhaa odottelua. Lisäksi malleja voi olla ketjussa — jos GPT-4 ei vastaa, kokeillaan GPT-4o-miniä ennen kuin luovutetaan.
+
+---
+
+**"Miten tiedät että LLM ei keksi vastausta itse vaan hakee oikeasti datasta?"**
+> Lokeista näkyy generoitu SQL-kysely, tietokannasta palautunut JSON ja vasta sen jälkeen LLM:n lopullinen vastaus. Jos data ei ole siellä, malli sanoo ettei tiedä — ei keksi lukuja.
+
+---
+
+**"Miksi maksimit 5 kierrosta agenttiloopissa — miksi ei enemmän?"**
+> Jokainen kierros on GPT-4 kutsu — se maksaa rahaa ja vie aikaa. 5 kierrosta riittää lämpötilakyselyihin jotka tarvitsevat tyypillisesti 1–2 tietokantahakua. Ilman rajaa yksi buginen kysymys voisi pyörittää loopia minuuteissa.
+
+---
+
+**"Tämä on demo — mitä pitäisi muuttaa ennen kuin laittaisit tämän tuotantoon oikeille käyttäjille?"**
+> Tietoturva: API-avain pois `appsettings.json`:sta Key Vaultiin, käyttäjäkohtainen rate limiting. Data: partitioavain `/id` → `/content/paikkakunta` jotta kyselyt eivät skannaa miljoonaa partitiota. Resurssit: in-memory circuit breaker ei toimi kun instansseja on useita — se pitää viedä Redisiin. Ja välimuisti identtisille kyselyille.
+
+---
+
+**"Mikä tässä on oikeasti uutta? Eikö tämä ole vain ChatGPT jolla on tietokantayhteys?"**
+> ChatGPT on musta laatikko — et tiedä mitä se tekee, et voi rajoittaa sitä, etkä voi kytkeä sitä omaan kantaasi. Tässä kaikki on hallinnassa: LLM ei voi kirjoittaa eikä poistaa dataa, kyselyt lokitetaan, kustannukset pysyvät kurissa kierrosrajalla ja timeoutilla, ja se toimii yrityksen omassa Azure-ympäristössä GDPR:n alla. Se ei ole vain "ChatGPT + tietokanta" — se on hallittu integraatio.
+
+---
+
+### Demoajalle
+
+**"Näytä käytännössä miten se toimii"**
+
+1. **Wow-hetki** — kysymys joka toimii täydellisesti: *"Mikä oli kylmin kuukausi Tampereella 2024?"* → tarkka vastaus kuukaudella ja lämpötilalla
+2. **Selitys** — näytä lokit: tässä on SQL jonka AI kirjoitti, tässä tietokannan vastaus, tässä lopullinen vastaus
+3. **Rajat** — *"Kirjoita minulle resepti"* → järjestelmä kieltäytyy kohteliaasti
+4. **Puuttuvat tiedot** — kysymys kaupungista jota ei ole datassa → rehellinen "en tiedä"

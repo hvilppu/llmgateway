@@ -33,6 +33,14 @@ Kysely → partition 1 → partition 2 → ... → partition 1 000 000
 
 Jos throttlausta ei tule, kysely saattaa kestää **useita minuutteja**.
 
+**Korjaus:** Vaihda partitioavain `/content/paikkakunta`-kenttään — per-kaupunki-kyselyt osuvat yhteen partitioon. "Suomen keskilämpötila" vaatii silti cross-partition-kyselyn, mutta 10 partitiota vs 1M on eri maailma.
+
+**Korjaus (pidemmällä tähtäimellä):** Pre-aggregated data — laske kuukausi-/vuosikeskiarvot etukäteen erilliseen containeriin. "Keskilämpötila 2025" osuu yhteen dokumenttiin eikä skannaa mitään.
+
+**Korjaus (arkkitehtuuritaso):** Jos data on puhtaasti strukturoitua numeerista dataa tässä mittakaavassa, relaatiotietokanta indekseillä on oikea työkalu. Cosmos DB on optimoitu pistekyselyihin, ei analyyttisiin aggregaatioihin.
+
+→ `tools/seed_cosmos.py`: partitioavain `/id` — pitäisi olla `/content/paikkakunta`
+
 ---
 
 ### Pullonkaula 2 — QueryService ei rajoita tuloksia 🔴
@@ -48,6 +56,8 @@ SELECT * FROM c WHERE STARTSWITH(c.content.pvm, '2025')
 - Palvelimen muisti loppuu (OOM)
 - Tai tulos lisätään messages-listaan → seuraava GPT-4 kutsu saa giganttiset tokenit
 
+**Korjaus:** Lisää `TOP`-rajoitus `QueryServiceen` — pakota `SELECT TOP 500` jos kyselyssä ei ole aggregaatiota, niin tulosjoukko pysyy hallinnassa.
+
 → `QueryService.cs`, `ExecuteQueryAsync`: ei rivirajaa eikä tuloskokorajoitusta
 
 ---
@@ -56,6 +66,8 @@ SELECT * FROM c WHERE STARTSWITH(c.content.pvm, '2025')
 
 Vaikka `AVG` palauttaisi vain yhden luvun, jos käyttäjä kysyy useita asioita peräkkäin samassa agenttiloopissa, messages-lista kasvaa kierros kierrokselta. GPT-4:n konteksti-ikkuna ylittyy → `context_length_exceeded` virhe → `500 Internal Server Error`.
 
+**Korjaus:** Rajoita messages-listan koko: trimmaa vanhimmat tool-viestit tai lisää token-laskuri joka katkaisee loopin ennen `context_length_exceeded`-virhettä.
+
 → `ChatEndpoints.cs`, `RunAgentLoopAsync`: messages-lista kasvaa kumulatiivisesti
 
 ---
@@ -63,6 +75,8 @@ Vaikka `AVG` palauttaisi vain yhden luvun, jos käyttäjä kysyy useita asioita 
 ### Pullonkaula 4 — Ei aikakatkaisua Cosmos DB -kyselylle 🟡
 
 `TimeoutMs = 15 000 ms` koskee vain Azure OpenAI -kutsuja. Cosmos DB -kyselyllä ei ole omaa timeoutia koodissa. Jos kysely kestää 2 minuuttia, gateway odottaa — ja ASP.NET Coren oletuspyyntötimeout voi katkaista koko HTTP-yhteyden ennen kuin vastaus ehtii takaisin.
+
+**Korjaus:** Vie `CancellationToken` läpi `CosmosQueryService.ExecuteQueryAsync`-metodiin ja aseta Cosmos-kutsulle erillinen `CancellationTokenSource.CancelAfter(TimeSpan)`.
 
 → `QueryService.cs`: `ExecuteQueryAsync` ilman `CancellationToken`-tukea
 
@@ -76,18 +90,6 @@ Vaikka `AVG` palauttaisi vain yhden luvun, jos käyttäjä kysyy useita asioita 
 | QueryService ilman rivirajaa | Koodi | OOM tai token-räjähdys |
 | Messages-listan kasvu | Koodi | context_length_exceeded → 500 |
 | Ei Cosmos DB -timeoutia | Koodi | Hidas kutsu roikkuu loputtomiin |
-
----
-
-### Oikeat korjaukset tähän skaalaan
-
-**1. Vaihda partitioavain** — `/content/paikkakunta` jolloin per-kaupunki-kyselyt osuvat yhteen partitioon. "Suomen keskilämpötila" vaatii silti cross-partition-kyselyn, mutta 10 partitiota vs 1M on eri maailma.
-
-**2. Lisää TOP-rajoitus QueryServiceen** — pakota `SELECT TOP 500` jos kyselyssä ei ole aggregaatiota, niin tulosjoukko pysyy hallinnassa.
-
-**3. Pre-aggregated data** — laske kuukausi-/vuosikeskiarvot etukäteen erilliseen containeriin. "Keskilämpötila 2025" osuu yhteen dokumenttiin eikä skannaa mitään.
-
-**4. Azure SQL tai Synapse** — jos data on puhtaasti strukturoitua numeerista dataa tässä mittakaavassa, relaatiotietokanta indekseillä on oikea työkalu. Cosmos DB on optimoitu pistekyselyihin, ei analyyttisiin aggregaatioihin.
 
 ---
 
