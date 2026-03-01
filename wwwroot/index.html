@@ -330,6 +330,7 @@
             <option value="critical">critical — vahvempi malli</option>
         </select>
         <button class="examples-btn" onclick="showExamples()">Näytä esimerkit</button>
+        <button class="examples-btn" id="repeatBtn" onclick="repeatLast()" disabled title="Ei edellistä kysymystä">Toista edellinen kysymys</button>
     </div>
 </div>
 
@@ -391,6 +392,9 @@
     const welcomeEl = document.getElementById('welcome');
     const apiKeyEl = document.getElementById('apiKey');
     const policyEl = document.getElementById('policy');
+    const repeatBtn = document.getElementById('repeatBtn');
+
+    let lastQuestion = '';
 
     // Palauta tallennettu avain ja policy
     apiKeyEl.value = localStorage.getItem('llmgw_key') || '';
@@ -415,6 +419,13 @@
     function insertYear(el) {
         const cur = inputEl.value.trim();
         inputEl.value = cur ? cur + ' ' + el.textContent : el.textContent;
+        autoResize(inputEl);
+        inputEl.focus();
+    }
+
+    function repeatLast() {
+        if (!lastQuestion) return;
+        inputEl.value = lastQuestion;
         autoResize(inputEl);
         inputEl.focus();
     }
@@ -469,6 +480,10 @@
             setTimeout(() => apiKeyEl.classList.remove('error'), 1800);
             return;
         }
+
+        lastQuestion = text;
+        repeatBtn.disabled = false;
+        repeatBtn.title = '';
 
         inputEl.value = '';
         autoResize(inputEl);
