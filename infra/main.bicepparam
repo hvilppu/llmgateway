@@ -1,30 +1,36 @@
 // LlmGateway — parameter values for main.bicep
-// HUOM: azureOpenAIApiKey jätetään tyhjäksi — pipeline ylikirjoittaa sen secretillä.
 
 using './main.bicep'
 
-param appName              = 'heikkis-llmgateway-prod'       // muuta yksilölliseksi
-param location             = 'swedencentral'
-param sku                  = 'B1'
+param appName            = 'heikkis-llmgateway-prod'   // muuta globaalisti uniikiksi
+param location           = 'swedencentral'
+param sku                = 'B1'
 
-param gatewayApiKey        = ''  // EI täytetä tähän — tulee pipeline-secretistä (GATEWAY_API_KEY)
-param azureOpenAIApiKey    = ''  // EI täytetä tähän — tulee pipeline-secretistä (AZURE_OPENAI_API_KEY)
+param gatewayApiKey      = ''  // EI täytetä tähän — tulee pipeline-secretistä (GATEWAY_API_KEY)
 
-param azureOpenAIEndpoint  = 'https://swedencentral.api.cognitive.microsoft.com/'
-param azureOpenAIApiVersion = '2024-02-15-preview'
-
+// Azure OpenAI — resurssi ja deploymentit luodaan automaattisesti Bicepissä
+param openAIResourceName      = 'heikkis-openai-prod'        // muuta globaalisti uniikiksi
 param gpt4DeploymentName      = 'gpt4-deployment'
 param gpt4oMiniDeploymentName = 'gpt4o-mini-deployment'
 
-// Cosmos DB — function calling -agenttilooppia varten (tools-policy)
-// param cosmosConnectionString  = 'AccountEndpoint=https://...;AccountKey=...;'  // EI tähän — käytä pipeline-secretiä
-param cosmosDatabaseName      = 'ragdb'
-param cosmosContainerName     = 'documents'
-// param cosmosTopK            = 5
+// Cosmos DB — tili, tietokanta ja container luodaan automaattisesti Bicepissä
+param cosmosAccountName   = 'heikkis-cosmos-prod'            // muuta globaalisti uniikiksi
+param cosmosDatabaseName  = 'ragdb'
+param cosmosContainerName = 'documents'
+
+// MS SQL
+param sqlAdminLogin   = 'sqladmin'
+param sqlDatabaseName = 'llmgateway'
+// param sqlAdminPassword = ''  // EI täytetä tähän — tulee pipeline-secretistä (AZURE_SQL_ADMIN_PASSWORD)
 
 // Jätä oletusarvot tai ylikirjoita tarvittaessa:
-// param azureOpenAITimeoutMs             = 15000
-// param azureOpenAIMaxRetries            = 2
-// param azureOpenAIRetryDelayMs          = 500
-// param circuitBreakerFailureThreshold   = 5
+// param azureOpenAIApiVersion              = '2024-02-15-preview'
+// param azureOpenAITimeoutMs               = 15000
+// param azureOpenAIMaxRetries              = 2
+// param azureOpenAIRetryDelayMs            = 500
+// param gpt4ModelVersion                   = '2024-11-20'
+// param gpt4oMiniModelVersion              = '2024-07-18'
+// param gpt4Capacity                       = 10
+// param gpt4oMiniCapacity                  = 20
+// param circuitBreakerFailureThreshold     = 5
 // param circuitBreakerBreakDurationSeconds = 30

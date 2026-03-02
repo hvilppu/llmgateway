@@ -1,4 +1,4 @@
-# Provisioi Azure-infrastruktuuri Bicep-templatella.
+# Provisioi Azure-infrastruktuuri Bicep-templateilla.
 # Ajetaan manuaalisesti kun infraa muutetaan — ei automaattisesti.
 #
 # Vaadittavat GitHub-asetukset:
@@ -6,9 +6,10 @@
 #             AZURE_TENANT_ID
 #             AZURE_SUBSCRIPTION_ID
 #             GATEWAY_API_KEY             (X-Api-Key -headerin arvo, ei koskaan params-tiedostoon)
-#             AZURE_OPENAI_API_KEY         (ei koskaan params-tiedostoon)
-#             AZURE_COSMOS_CONNECTION_STRING (ei koskaan params-tiedostoon)
+#             AZURE_SQL_ADMIN_PASSWORD    (MS SQL -ylläpitäjän salasana)
 #   Variables: AZURE_RESOURCE_GROUP  (esim. rg-llmgateway-prod)
+#
+# Azure OpenAI ja Cosmos DB luodaan automaattisesti Bicepissä — erillisiä secretejä ei tarvita.
 #
 # Service principal -luonti:
 #   az ad sp create-for-rbac --name llmgateway-deploy \
@@ -49,15 +50,22 @@ jobs:
             --location swedencentral \
             --output none
 
-      - name: Deploy Bicep
+      - name: Deploy main.bicep (App Service + OpenAI + Cosmos DB + SQL)
         run: |
           az deployment group create \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --template-file infra/main.bicep \
             --parameters infra/main.bicepparam \
             --parameters "gatewayApiKey=${{ secrets.GATEWAY_API_KEY }}" \
-            --parameters "azureOpenAIApiKey=${{ secrets.AZURE_OPENAI_API_KEY }}" \
-            --parameters "cosmosConnectionString=${{ secrets.AZURE_COSMOS_CONNECTION_STRING }}" \
+            --parameters "sqlAdminPassword=${{ secrets.AZURE_SQL_ADMIN_PASSWORD }}" \
+            --output table
+
+      - name: Deploy function.bicep (SyncFunction)
+        run: |
+          az deployment group create \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --template-file infra/function.bicep \
+            --parameters infra/function.bicepparam \
             --parameters "sqlAdminPassword=${{ secrets.AZURE_SQL_ADMIN_PASSWORD }}" \
             --output table
 

@@ -11,18 +11,16 @@ param location string = resourceGroup().location
 @allowed(['F1', 'B1', 'B2', 'P1v3', 'P2v3'])
 param sku string = 'B1'
 
-// ── Azure OpenAI ──────────────────────────────────────────────────────────────
-
-@description('Azure OpenAI endpoint, e.g. https://my-resource.openai.azure.com/')
-param azureOpenAIEndpoint string
+// ── API Key (Gateway) ─────────────────────────────────────────────────────────
 
 @secure()
 @description('Gateway API key. Clients must send this in X-Api-Key header. Pass via --parameters or pipeline secret.')
 param gatewayApiKey string
 
-@secure()
-@description('Azure OpenAI API key. Pass via --parameters or pipeline secret — never store in params file.')
-param azureOpenAIApiKey string
+// ── Azure OpenAI ──────────────────────────────────────────────────────────────
+
+@description('Globally unique name for the Azure OpenAI Cognitive Services resource.')
+param openAIResourceName string
 
 @description('Azure OpenAI API version.')
 param azureOpenAIApiVersion string = '2024-02-15-preview'
@@ -31,22 +29,33 @@ param azureOpenAITimeoutMs int = 15000
 param azureOpenAIMaxRetries int = 2
 param azureOpenAIRetryDelayMs int = 500
 
-@description('Azure deployment name for gpt4.')
-param gpt4DeploymentName string
+@description('Deployment name for gpt-4o (käytetään avaimena "gpt4").')
+param gpt4DeploymentName string = 'gpt4-deployment'
 
-@description('Azure deployment name for gpt4oMini.')
-param gpt4oMiniDeploymentName string
+@description('Deployment name for gpt-4o-mini (käytetään avaimena "gpt4oMini").')
+param gpt4oMiniDeploymentName string = 'gpt4o-mini-deployment'
 
-// ── Cosmos DB (RAG) ───────────────────────────────────────────────────────────
+@description('gpt-4o -mallin versio.')
+param gpt4ModelVersion string = '2024-11-20'
 
-@secure()
-@description('Cosmos DB primary connection string. Pass via --parameters or pipeline secret.')
-param cosmosConnectionString string = ''
+@description('gpt-4o-mini -mallin versio.')
+param gpt4oMiniModelVersion string = '2024-07-18'
+
+@description('gpt-4o -deploymentin TPM-kapasiteetti (tuhansina).')
+param gpt4Capacity int = 10
+
+@description('gpt-4o-mini -deploymentin TPM-kapasiteetti (tuhansina).')
+param gpt4oMiniCapacity int = 20
+
+// ── Cosmos DB ─────────────────────────────────────────────────────────────────
+
+@description('Globally unique name for the Cosmos DB account.')
+param cosmosAccountName string
 
 @description('Cosmos DB database name.')
 param cosmosDatabaseName string = 'ragdb'
 
-@description('Cosmos DB container name (must have vector index on embedding field).')
+@description('Cosmos DB container name.')
 param cosmosContainerName string = 'documents'
 
 // ── MS SQL ────────────────────────────────────────────────────────────────────
@@ -89,6 +98,95 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   }
 }
 
+// ── Azure OpenAI ──────────────────────────────────────────────────────────────
+
+resource openAI 'Microsoft.CognitiveServices/accounts@2024-04-01-preview' = {
+  name: openAIResourceName
+  location: location
+  kind: 'OpenAI'
+  sku: { name: 'S0' }
+  properties: {
+    publicNetworkAccess: 'Enabled'
+  }
+}
+
+// Model deploymentit luodaan peräkkäin — Azure ei salli rinnakkaisia deploymentteja samalle tilille
+resource gpt4Deployment 'Microsoft.CognitiveServices/accounts/deployments@2024-04-01-preview' = {
+  parent: openAI
+  name: gpt4DeploymentName
+  sku: {
+    name: 'Standard'
+    capacity: gpt4Capacity
+  }
+  properties: {
+    model: {
+      format: 'OpenAI'
+      name: 'gpt-4o'
+      version: gpt4ModelVersion
+    }
+  }
+}
+
+resource gpt4oMiniDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024-04-01-preview' = {
+  parent: openAI
+  name: gpt4oMiniDeploymentName
+  sku: {
+    name: 'Standard'
+    capacity: gpt4oMiniCapacity
+  }
+  properties: {
+    model: {
+      format: 'OpenAI'
+      name: 'gpt-4o-mini'
+      version: gpt4oMiniModelVersion
+    }
+  }
+  dependsOn: [gpt4Deployment] // peräkkäinen luonti vaaditaan
+}
+
+// ── Cosmos DB ─────────────────────────────────────────────────────────────────
+
+resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = {
+  name: cosmosAccountName
+  location: location
+  kind: 'GlobalDocumentDB'
+  properties: {
+    databaseAccountOfferType: 'Standard'
+    locations: [
+      {
+        locationName: location
+        failoverPriority: 0
+        isZoneRedundant: false
+      }
+    ]
+    consistencyPolicy: {
+      defaultConsistencyLevel: 'Session'
+    }
+  }
+}
+
+resource cosmosDatabase 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024-05-15' = {
+  parent: cosmosAccount
+  name: cosmosDatabaseName
+  properties: {
+    resource: { id: cosmosDatabaseName }
+  }
+}
+
+resource cosmosContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-05-15' = {
+  parent: cosmosDatabase
+  name: cosmosContainerName
+  properties: {
+    resource: {
+      id: cosmosContainerName
+      partitionKey: {
+        paths: ['/id']
+        kind: 'Hash'
+      }
+    }
+  }
+}
+
 // ── App Service Plan ──────────────────────────────────────────────────────────
 
 resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
@@ -124,9 +222,9 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
         // API key auth
         { name: 'ApiKey__Key', value: gatewayApiKey }
 
-        // Azure OpenAI
-        { name: 'AzureOpenAI__Endpoint',      value: azureOpenAIEndpoint }
-        { name: 'AzureOpenAI__ApiKey',         value: azureOpenAIApiKey }
+        // Azure OpenAI — endpoint ja avain luetaan luodusta resurssista
+        { name: 'AzureOpenAI__Endpoint',      value: openAI.properties.endpoint }
+        { name: 'AzureOpenAI__ApiKey',         value: openAI.listKeys().key1 }
         { name: 'AzureOpenAI__ApiVersion',     value: azureOpenAIApiVersion }
         { name: 'AzureOpenAI__TimeoutMs',      value: string(azureOpenAITimeoutMs) }
         { name: 'AzureOpenAI__MaxRetries',     value: string(azureOpenAIMaxRetries) }
@@ -145,8 +243,8 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'Policies__tools_sql__ToolsEnabled',      value: 'true' }
         { name: 'Policies__tools_sql__QueryBackend',      value: 'mssql' }
 
-        // Cosmos DB RAG
-        { name: 'CosmosRag__ConnectionString', value: cosmosConnectionString }
+        // Cosmos DB — connection string luetaan luodusta resurssista
+        { name: 'CosmosRag__ConnectionString', value: cosmosAccount.listConnectionStrings().connectionStrings[0].connectionString }
         { name: 'CosmosRag__DatabaseName',     value: cosmosDatabaseName }
         { name: 'CosmosRag__ContainerName',    value: cosmosContainerName }
 
@@ -204,3 +302,4 @@ resource sqlDatabase 'Microsoft.Sql/servers/databases@2023-08-01-preview' = {
 output appName string = webApp.name
 output appUrl string = 'https://${webApp.properties.defaultHostName}'
 output appInsightsName string = appInsights.name
+output cosmosAccountName string = cosmosAccount.name

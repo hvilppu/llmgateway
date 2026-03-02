@@ -1,15 +1,7 @@
 // SyncFunction — Azure Functions -infrastruktuuri
 // Provisioi Function App:n joka synkronoi Cosmos DB:n muutokset MS SQL:ään 15 min välein.
 //
-// Edellytys: main.bicep on ajettu — tämä viittaa siellä luotuun SQL Serveriin ja App Insightsiin.
-//
-// Deploy:
-//   az deployment group create \
-//     --resource-group <rg> \
-//     --template-file infra/function.bicep \
-//     --parameters infra/function.bicepparam \
-//     --parameters cosmosConnectionString="<yhteysjono>" \
-//     --parameters sqlAdminPassword="<salasana>"
+// Edellytys: main.bicep on ajettu — tämä viittaa siellä luotuihin SQL Server-, App Insights- ja Cosmos DB -resursseihin.
 
 @description('Globally unique name for the Function App. Used as hostname: <functionAppName>.azurewebsites.net')
 param functionAppName string
@@ -22,9 +14,8 @@ param location string = resourceGroup().location
 
 // ── Cosmos DB ────────────────────────────────────────────────────────────────
 
-@secure()
-@description('Cosmos DB primary connection string. Pass via pipeline secret — never store in params file.')
-param cosmosConnectionString string
+@description('Cosmos DB account name — luotu main.bicep:ssä. Connection string luetaan suoraan resurssista.')
+param cosmosAccountName string
 
 @description('Cosmos DB database name.')
 param cosmosDatabaseName string = 'ragdb'
@@ -54,6 +45,11 @@ resource existingAppInsights 'Microsoft.Insights/components@2020-02-02' existing
 // SQL Server luotu main.bicep:ssä — tarvitaan FQDN connection stringiä varten
 resource existingSqlServer 'Microsoft.Sql/servers@2023-08-01-preview' existing = {
   name: '${appName}-sql'
+}
+
+// Cosmos DB -tili luotu main.bicep:ssä — connection string luetaan listConnectionStrings():lla
+resource existingCosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' existing = {
+  name: cosmosAccountName
 }
 
 // ── Storage Account (Azure Functions vaatii) ─────────────────────────────────
@@ -104,8 +100,8 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         // Storage — Functions runtime tarvitsee tämän sisäiseen käyttöön
         { name: 'AzureWebJobsStorage', value: 'DefaultEndpointsProtocol=https;AccountName=${storage.name};AccountKey=${storage.listKeys().keys[0].value};EndpointSuffix=core.windows.net' }
 
-        // Cosmos DB (synkronoinnin lähde)
-        { name: 'CosmosRag__ConnectionString', value: cosmosConnectionString }
+        // Cosmos DB — connection string luetaan main.bicep:ssä luodusta resurssista
+        { name: 'CosmosRag__ConnectionString', value: existingCosmosAccount.listConnectionStrings().connectionStrings[0].connectionString }
         { name: 'CosmosRag__DatabaseName',     value: cosmosDatabaseName }
         { name: 'CosmosRag__ContainerName',    value: cosmosContainerName }
 
