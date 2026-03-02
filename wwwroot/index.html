@@ -326,8 +326,8 @@
         <select id="policy">
             <option value="tools">tools — hakee Cosmos DB:stä</option>
             <option value="tools_sql">tools_sql — hakee MS SQL:stä</option>
-            <option value="chat_default">chat_default — LLM suoraan</option>
-            <option value="critical">critical — vahvempi malli</option>
+            <option value="chat_default">chat_default — LLM suoraan ('Hallusinaatio')</option>
+            <option value="critical">critical — vahvempi malli — LLM suoraan ('Hallusinaatio')</option>
         </select>
         <button class="examples-btn" onclick="showExamples()">Näytä esimerkit</button>
         <button class="examples-btn" id="repeatBtn" onclick="repeatLast()" disabled title="Ei edellistä kysymystä">Toista edellinen kysymys</button>
@@ -338,7 +338,7 @@
     <div class="welcome" id="welcome">
         <div class="data-info">
             <div class="data-info-section">
-                <span class="data-info-label">Kaupungit</span>
+                <span class="data-info-label">Kaupungit (Joilla saatavilla säädata)</span>
                 <div class="city-list">
                     <span class="city-tag" onclick="insertCity(this)">Helsinki</span>
                     <span class="city-tag" onclick="insertCity(this)">Tampere</span>
@@ -353,7 +353,7 @@
                 </div>
             </div>
             <div class="data-info-section">
-                <span class="data-info-label">Vuodet</span>
+                <span class="data-info-label">Vuodet (Joilla saatavilla säädata)</span>
                 <div class="year-list">
                     <span class="year-tag" onclick="insertYear(this)">2023</span>
                     <span class="year-tag" onclick="insertYear(this)">2024</span>

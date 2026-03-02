@@ -10,7 +10,7 @@ Vastauksia yleisimpiin kysymyksiin gatewayn toimintaperiaatteesta, virhetilantei
   - [Miksi käyttää LLM-pohjaista hakua perinteisen SQL-kannan sijaan?](#miksi-käyttää-llm-pohjaista-hakua-perinteisen-sql-kannan-sijaan)
   - [Miten gateway päättää, haetaanko data kannasta vai vastaako LLM suoraan?](#miten-gateway-päättää-haetaanko-data-kannasta-vai-vastaako-llm-suoraan)
   - [Miten toimitaan kun kysymys vaatii sekä kantadataa että LLM:n omaa tietoa?](#miten-toimitaan-kun-kysymys-vaatii-sekä-kantadataa-että-llmn-omaa-tietoa)
-  - [Mitkä ovat erot suoran LLM-vastauksen, Text-to-SQL:n ja RAG-haun välillä?](#mitkä-ovat-erot-suoran-llm-vastauksen-text-to-sqln-ja-rag-haun-välillä)
+  - [Mitkä ovat erot suoran LLM-vastauksen ja Text-to-SQL:n välillä?](#mitkä-ovat-erot-suoran-llm-vastauksen-ja-text-to-sqln-välillä)
 - [Virhetilanteet ja luotettavuus](#virhetilanteet-ja-luotettavuus)
   - [Mitä tapahtuu jos LLM generoi virheellisen SQL-kyselyn?](#mitä-tapahtuu-jos-llm-generoi-virheellisen-sql-kyselyn)
   - [Mitä circuit breaker tarkoittaa käytännössä — mitä käyttäjä näkee kun se aukeaa?](#mitä-circuit-breaker-tarkoittaa-käytännössä--mitä-käyttäjä-näkee-kun-se-aukeaa)

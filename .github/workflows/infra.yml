@@ -1,22 +1,17 @@
-# Provisioi Azure-infrastruktuuri Bicep-templateilla.
+# Provisioi Azure-infrastruktuuri Bicep-templatella.
+# Luo kaiken yhdellä ajolla: App Service, Azure OpenAI, Cosmos DB, SQL Server, SyncFunction.
 # Ajetaan manuaalisesti kun infraa muutetaan — ei automaattisesti.
 #
 # Vaadittavat GitHub-asetukset:
 #   Secrets : AZURE_CLIENT_ID              (service principal / OIDC)
 #             AZURE_TENANT_ID
 #             AZURE_SUBSCRIPTION_ID
-#             GATEWAY_API_KEY             (X-Api-Key -headerin arvo, ei koskaan params-tiedostoon)
+#             GATEWAY_API_KEY             (X-Api-Key -headerin arvo)
 #             AZURE_SQL_ADMIN_PASSWORD    (MS SQL -ylläpitäjän salasana)
 #   Variables: AZURE_RESOURCE_GROUP  (esim. rg-llmgateway-prod)
 #
-# Azure OpenAI ja Cosmos DB luodaan automaattisesti Bicepissä — erillisiä secretejä ei tarvita.
-#
-# Service principal -luonti:
-#   az ad sp create-for-rbac --name llmgateway-deploy \
-#     --role Contributor \
-#     --scopes /subscriptions/<sub-id>/resourceGroups/<rg> \
-#     --json-auth
-# Tallenna output GitHubin secreteihin (AZURE_CLIENT_ID, TENANT_ID, SUBSCRIPTION_ID).
+# Azure OpenAI API-avain ja Cosmos DB connection string luetaan automaattisesti
+# Bicepissä luoduista resursseista — erillisiä secretejä ei tarvita.
 
 name: Provision Infrastructure
 
@@ -50,7 +45,7 @@ jobs:
             --location swedencentral \
             --output none
 
-      - name: Deploy main.bicep (App Service + OpenAI + Cosmos DB + SQL)
+      - name: Deploy Bicep
         run: |
           az deployment group create \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
@@ -60,19 +55,10 @@ jobs:
             --parameters "sqlAdminPassword=${{ secrets.AZURE_SQL_ADMIN_PASSWORD }}" \
             --output table
 
-      - name: Deploy function.bicep (SyncFunction)
-        run: |
-          az deployment group create \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --template-file infra/function.bicep \
-            --parameters infra/function.bicepparam \
-            --parameters "sqlAdminPassword=${{ secrets.AZURE_SQL_ADMIN_PASSWORD }}" \
-            --output table
-
-      - name: Show App URL
+      - name: Show URLs
         run: |
           az deployment group show \
             --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
             --name main \
-            --query properties.outputs.appUrl.value \
-            --output tsv
+            --query "{appUrl: properties.outputs.appUrl.value, functionUrl: properties.outputs.functionAppUrl.value}" \
+            --output table

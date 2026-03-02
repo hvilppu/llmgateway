@@ -57,7 +57,6 @@ Gateway valitsee automaattisesti sopivimman lähestymistavan kysymyksen perustee
 |---------|---------------|-----------|
 | Tarkka luku tai laskutulos | Haku tietokannasta SQL:llä | "Mikä oli keskilämpötila helmikuussa?" |
 | Selitys tai konteksti | LLM vastaa suoraan | "Miksi talvi on kylmä?" |
-| Tekstikuvaus tai tunnelma | Semanttinen haku dokumenteista | "Miltä Helsingin talvi tuntui?" |
 
 Sama tekstikenttä — eri vastausstrategia konepellin alla.
 
@@ -117,7 +116,7 @@ Tietokantaan kyseleminen luonnollisella kielellä ei ole uusi idea. LlmGateway d
 
 - **Kieli:** C# / .NET 10
 - **Tekoäly:** Azure OpenAI (GPT-4o ja GPT-4o-mini)
-- **Tietokannat:** Azure Cosmos DB (NoSQL, vektorihaku) ja Azure SQL / MS SQL Server (relaatio, T-SQL)
+- **Tietokannat:** Azure Cosmos DB (NoSQL) ja Azure SQL / MS SQL Server (relaatio, T-SQL)
 - **Rajapinta:** yksinkertainen REST API — yksi endpoint, yksi JSON-viesti
 
 ---
@@ -130,7 +129,7 @@ Kun Azure-infra on provisionoitu, data siirretään Cosmoksesta MS SQL:ään yhd
 
 Skripti lukee jokaisen dokumentin Cosmoksesta, poimii kentät `id`, `paikkakunta`, `pvm` ja `lampotila`, ja kirjoittaa ne MS SQL:n `mittaukset`-tauluun. Ajo on idempotentti — sen voi toistaa turvallisesti jos Cosmokseen tulee uutta dataa.
 
-Tarkempi ohje löytyy [INFRA.md](INFRA.md)-dokumentista (kohta 4b).
+Tarkempi ohje löytyy [INFRA.md](INFRA.md)-dokumentista.
 
 ---
 

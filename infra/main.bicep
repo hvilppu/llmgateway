@@ -1,8 +1,14 @@
-// LlmGateway — Azure App Service infrastructure
+// LlmGateway — Azure-infrastruktuuri
+// Luo kaiken: App Service, Azure OpenAI, Cosmos DB, SQL Server, SyncFunction, Log Analytics, App Insights.
 // Deploy: az deployment group create --resource-group <rg> --template-file infra/main.bicep --parameters infra/main.bicepparam
+
+// ── Yleiset ───────────────────────────────────────────────────────────────────
 
 @description('Globally unique name for the App Service. Used as the hostname: <appName>.azurewebsites.net')
 param appName string
+
+@description('Globally unique name for the Function App. Used as hostname: <functionAppName>.azurewebsites.net')
+param functionAppName string
 
 @description('Azure region. Defaults to resource group location.')
 param location string = resourceGroup().location
@@ -187,6 +193,39 @@ resource cosmosContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/con
   }
 }
 
+// ── Azure SQL Server ──────────────────────────────────────────────────────────
+
+resource sqlServer 'Microsoft.Sql/servers@2023-08-01-preview' = {
+  name: '${appName}-sql'
+  location: location
+  properties: {
+    administratorLogin: sqlAdminLogin
+    administratorLoginPassword: sqlAdminPassword
+    publicNetworkAccess: 'Enabled'
+  }
+}
+
+// Salli Azure-sisäiset yhteydet (0.0.0.0 → 0.0.0.0 = Azure services firewall rule)
+resource sqlFirewallAzureServices 'Microsoft.Sql/servers/firewallRules@2023-08-01-preview' = {
+  parent: sqlServer
+  name: 'AllowAzureServices'
+  properties: {
+    startIpAddress: '0.0.0.0'
+    endIpAddress: '0.0.0.0'
+  }
+}
+
+// Basic-tier (~5 €/kk), 2 GB
+resource sqlDatabase 'Microsoft.Sql/servers/databases@2023-08-01-preview' = {
+  parent: sqlServer
+  name: sqlDatabaseName
+  location: location
+  sku: {
+    name: 'Basic'
+    tier: 'Basic'
+  }
+}
+
 // ── App Service Plan ──────────────────────────────────────────────────────────
 
 resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
@@ -201,7 +240,7 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
   }
 }
 
-// ── App Service ───────────────────────────────────────────────────────────────
+// ── App Service (LlmGateway) ──────────────────────────────────────────────────
 
 resource webApp 'Microsoft.Web/sites@2023-12-01' = {
   name: appName
@@ -248,7 +287,7 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'CosmosRag__DatabaseName',     value: cosmosDatabaseName }
         { name: 'CosmosRag__ContainerName',    value: cosmosContainerName }
 
-        // MS SQL (tools_sql-policy)
+        // MS SQL
         { name: 'Sql__ConnectionString', value: 'Server=${sqlServer.properties.fullyQualifiedDomainName};Database=${sqlDatabaseName};User Id=${sqlAdminLogin};Password=${sqlAdminPassword};Encrypt=True;TrustServerCertificate=False;' }
 
         // Circuit Breaker
@@ -263,43 +302,71 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
   }
 }
 
-// ── Azure SQL Server ──────────────────────────────────────────────────────────
+// ── Storage Account (SyncFunction vaatii) ────────────────────────────────────
 
-resource sqlServer 'Microsoft.Sql/servers@2023-08-01-preview' = {
-  name: '${appName}-sql'
+// Nimestä poistetaan väliviivat ja otetaan enintään 22 merkkiä + "st" = max 24 merkkiä
+// Storage account -nimi: vain pienet kirjaimet ja numerot, 3–24 merkkiä
+var storageAccountName = take('${replace(toLower(functionAppName), '-', '')}fnst', 24)
+
+resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
+  name: storageAccountName
   location: location
+  sku: { name: 'Standard_LRS' }
+  kind: 'StorageV2'
   properties: {
-    administratorLogin: sqlAdminLogin
-    administratorLoginPassword: sqlAdminPassword
-    // Sallii Azure-palveluiden yhteyden (esim. App Service)
-    publicNetworkAccess: 'Enabled'
+    allowBlobPublicAccess: false
+    minimumTlsVersion: 'TLS1_2'
   }
 }
 
-// Salli Azure-sisäiset yhteydet (0.0.0.0 → 0.0.0.0 = Azure services firewall rule)
-resource sqlFirewallAzureServices 'Microsoft.Sql/servers/firewallRules@2023-08-01-preview' = {
-  parent: sqlServer
-  name: 'AllowAzureServices'
-  properties: {
-    startIpAddress: '0.0.0.0'
-    endIpAddress: '0.0.0.0'
-  }
-}
+// ── Consumption Plan (SyncFunction, serverless ~0 €/kk idle) ─────────────────
+// Windows-pohjainen: Azure rajoittaa Linux Consumption -plaanin käyttöä resurssigrupeissa
+// joissa on muita App Service -resursseja. .NET isolated worker toimii kummallakin.
 
-// Basic-tier (~5 €/kk), 2 GB
-resource sqlDatabase 'Microsoft.Sql/servers/databases@2023-08-01-preview' = {
-  parent: sqlServer
-  name: sqlDatabaseName
+resource consumptionPlan 'Microsoft.Web/serverfarms@2023-12-01' = {
+  name: '${functionAppName}-plan'
   location: location
   sku: {
-    name: 'Basic'
-    tier: 'Basic'
+    name: 'Y1'
+    tier: 'Dynamic'
+  }
+}
+
+// ── Function App (SyncFunction) ───────────────────────────────────────────────
+
+resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
+  name: functionAppName
+  location: location
+  kind: 'functionapp'
+  properties: {
+    serverFarmId: consumptionPlan.id
+    httpsOnly: true
+    siteConfig: {
+      appSettings: [
+        // Functions runtime
+        { name: 'FUNCTIONS_EXTENSION_VERSION', value: '~4' }
+        { name: 'FUNCTIONS_WORKER_RUNTIME',    value: 'dotnet-isolated' }
+
+        // Storage — Functions runtime tarvitsee tämän sisäiseen käyttöön
+        { name: 'AzureWebJobsStorage', value: 'DefaultEndpointsProtocol=https;AccountName=${storage.name};AccountKey=${storage.listKeys().keys[0].value};EndpointSuffix=core.windows.net' }
+
+        // Cosmos DB — sama resurssi kuin App Servicella
+        { name: 'CosmosRag__ConnectionString', value: cosmosAccount.listConnectionStrings().connectionStrings[0].connectionString }
+        { name: 'CosmosRag__DatabaseName',     value: cosmosDatabaseName }
+        { name: 'CosmosRag__ContainerName',    value: cosmosContainerName }
+
+        // MS SQL — sama server kuin App Servicella
+        { name: 'Sql__ConnectionString', value: 'Server=${sqlServer.properties.fullyQualifiedDomainName};Database=${sqlDatabaseName};User Id=${sqlAdminLogin};Password=${sqlAdminPassword};Encrypt=True;TrustServerCertificate=False;' }
+
+        // Application Insights — sama instanssi kuin App Servicella
+        { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsights.properties.ConnectionString }
+      ]
+    }
   }
 }
 
 // ── Outputs ───────────────────────────────────────────────────────────────────
 
-output appName string = webApp.name
 output appUrl string = 'https://${webApp.properties.defaultHostName}'
+output functionAppUrl string = 'https://${functionApp.properties.defaultHostName}'
 output appInsightsName string = appInsights.name
-output cosmosAccountName string = cosmosAccount.name
