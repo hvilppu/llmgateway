@@ -36,6 +36,10 @@ builder.Services.Configure<CosmosOptions>(
 builder.Services.AddSingleton<CosmosClient>(sp =>
 {
     var opts = sp.GetRequiredService<IOptions<CosmosOptions>>().Value;
+    if (string.IsNullOrWhiteSpace(opts.ConnectionString))
+        throw new InvalidOperationException(
+            "CosmosRag__ConnectionString on tyhjä. " +
+            "Aseta AZURE_COSMOS_CONNECTION_STRING GitHub Secret ja aja infra-workflow uudelleen.");
     return new CosmosClient(opts.ConnectionString);
 });
 
@@ -73,6 +77,9 @@ builder.Services.AddApplicationInsightsTelemetry();
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
+
+// Fail-fast: validoi Cosmos-yhteys heti käynnistyksessä
+app.Services.GetRequiredService<CosmosClient>();
 
 if (app.Environment.IsDevelopment())
 {
