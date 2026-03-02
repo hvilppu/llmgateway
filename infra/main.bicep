@@ -253,7 +253,10 @@ resource raportitContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/c
         ]
       }
       indexingPolicy: {
-        // Embedding-polku suljetaan pois normaalista indeksistä (dokumentaation vaatimus)
+        // Kaikki polut indeksoidaan oletuksena — embedding-polku suljetaan erikseen pois
+        includedPaths: [
+          { path: '/*' }
+        ]
         excludedPaths: [
           { path: '/embedding/*' }
         ]
