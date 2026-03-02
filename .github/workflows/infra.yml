@@ -8,7 +8,8 @@
 #             AZURE_SUBSCRIPTION_ID
 #             GATEWAY_API_KEY             (X-Api-Key -headerin arvo)
 #             AZURE_SQL_ADMIN_PASSWORD    (MS SQL -ylläpitäjän salasana)
-#   Variables: AZURE_RESOURCE_GROUP  (esim. rg-llmgateway-prod)
+#   Variables: AZURE_RESOURCE_GROUP       (esim. rg-llmgateway-prod)
+#              AZURE_COSMOS_ACCOUNT_NAME  (esim. heikkis-cosmos-prod)
 #
 # Azure OpenAI API-avain ja Cosmos DB connection string luetaan automaattisesti
 # Bicepissä luoduista resursseista — erillisiä secretejä ei tarvita.
@@ -44,6 +45,18 @@ jobs:
             --name ${{ vars.AZURE_RESOURCE_GROUP }} \
             --location swedencentral \
             --output none
+
+      - name: Enable Cosmos DB Vector Search capability
+        run: |
+          # Aktivoidaan capability ennen Bicep-deploymenttia — voi kestää jopa 15 min.
+          # Epäonnistuu hiljaisesti jos tiliä ei ole vielä olemassa (ensimmäinen ajo).
+          az cosmosdb update \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "${{ vars.AZURE_COSMOS_ACCOUNT_NAME }}" \
+            --capabilities EnableNoSQLVectorSearch \
+            --output none 2>/dev/null \
+            && echo "Odotetaan 120 s capabilityn aktivoitumista..." && sleep 120 \
+            || echo "Cosmos-tiliä ei löydy tai capability jo aktiivinen — jatketaan."
 
       - name: Deploy Bicep
         run: |
