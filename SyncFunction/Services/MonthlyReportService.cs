@@ -58,6 +58,9 @@ public class MonthlyReportService
             return;
         }
 
+        if (!await IsReportContainerReadyAsync(cancellationToken))
+            return;
+
         _logger.LogInformation("Kaikkien kuukausiraporttien backfill alkaa.");
 
         // Haetaan kaikki mittaukset kerralla ja ryhmitellään muistissa
@@ -110,6 +113,9 @@ public class MonthlyReportService
             return;
         }
 
+        if (!await IsReportContainerReadyAsync(cancellationToken))
+            return;
+
         var now = DateTime.UtcNow;
         var datePrefix = $"{now.Year}-{now.Month:D2}";
 
@@ -145,6 +151,29 @@ public class MonthlyReportService
         }
 
         _logger.LogInformation("Kuukausiraporttien generointi valmis. Kuukausi={DatePrefix}", datePrefix);
+    }
+
+    // Tarkistaa että kuukausiraportit-container on olemassa ennen kirjoitusyritystä.
+    // Container luodaan infran phase 2 -deploymentilla (deployVectorContainer=true).
+    // Jos container puuttuu, palautetaan false ja operaatio ohitetaan hiljaisesti.
+    private async Task<bool> IsReportContainerReadyAsync(CancellationToken ct)
+    {
+        var container = _cosmosClient
+            .GetDatabase(_cosmosOptions.DatabaseName)
+            .GetContainer(_reportOptions.ReportContainerName);
+        try
+        {
+            await container.ReadContainerAsync(cancellationToken: ct);
+            return true;
+        }
+        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            _logger.LogWarning(
+                "Kuukausiraportit-container '{Container}' ei ole vielä olemassa — ohitetaan. " +
+                "Aja infra uudelleen parametrilla deployVectorContainer=true.",
+                _reportOptions.ReportContainerName);
+            return false;
+        }
     }
 
     // Hakee päivittäiset mittaukset. Tyhjä datePrefix = kaikki dokumentit (backfill).
