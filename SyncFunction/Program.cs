@@ -15,8 +15,8 @@ builder.Services.AddApplicationInsightsTelemetryWorkerService();
 // Cosmos DB -asiakas — yksittäinen instanssi koko funktiosovellukselle (thread-safe)
 builder.Services.AddSingleton(sp =>
 {
-    var connStr = builder.Configuration["CosmosRag__ConnectionString"]
-        ?? throw new InvalidOperationException("CosmosRag__ConnectionString puuttuu konfiguraatiosta");
+    var connStr = builder.Configuration["CosmosRag:ConnectionString"]
+        ?? throw new InvalidOperationException("CosmosRag:ConnectionString puuttuu konfiguraatiosta");
     return new CosmosClient(connStr);
 });
 
