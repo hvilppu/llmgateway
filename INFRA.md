@@ -164,6 +164,10 @@ Push `main`-haaraan → `deploy.yml` käynnistyy automaattisesti.
 
 Infra-muutokset: aja `infra.yml` manuaalisesti GitHub Actions → **Provision Infrastructure** → **Run workflow**.
 
+
+echo {"name":"github-production","issuer":"https://token.actions.githubusercontent.com","subject":"repo:hvilppu/llmgateway:environment:production" audiences":["api://AzureADTokenExchange"]} > fedcred.json
+az ad app federated-credential create --id <APP_ID> --parameters @fedcred.json
+
 ---
 
 ## Infra-tiedostot
