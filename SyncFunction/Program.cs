@@ -23,9 +23,17 @@ builder.Services.AddSingleton(sp =>
 // Konfiguraatio-optiot
 builder.Services.Configure<CosmosRagOptions>(builder.Configuration.GetSection("CosmosRag"));
 builder.Services.Configure<SqlOptions>(builder.Configuration.GetSection("Sql"));
+builder.Services.Configure<MonthlyReportOptions>(builder.Configuration.GetSection("MonthlyReport"));
 
-// Synkronointipalvelu — injektoidaan triggeriin
+// IHttpClientFactory — MonthlyReportService käyttää Azure OpenAI -kutsuihin
+builder.Services.AddHttpClient();
+
+// Synkronointi- ja kuukausiraporttipalvelut — injektoidaan triggeriin
 builder.Services.AddSingleton<CosmosSyncService>();
+builder.Services.AddSingleton<MonthlyReportService>();
+
+// Backfill käynnistyksessä: generoi raportit kaikille historiakuukausille
+builder.Services.AddHostedService<ReportBackfillService>();
 
 // Migraatiot ajetaan IHostedService-toteutuksena heti käynnistyksen yhteydessä
 builder.Services.AddHostedService<MigrationService>();

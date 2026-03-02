@@ -55,6 +55,11 @@ builder.Services.AddKeyedSingleton<IQueryService, SqlQueryService>("mssql");
 builder.Services.AddKeyedSingleton<ISchemaProvider, CosmosSchemaProvider>("cosmos");
 builder.Services.AddKeyedSingleton<ISchemaProvider, SqlSchemaProvider>("mssql");
 
+// RAG-palvelu — hakee semanttisesti relevantin kontekstin kuukausiraportticontainerista
+builder.Services.Configure<RagOptions>(
+    builder.Configuration.GetSection("Rag"));
+builder.Services.AddSingleton<IRagService, CosmosRagService>();
+
 // Circuit breaker — singleton jotta tila säilyy kutsujen välillä
 builder.Services.AddSingleton<ICircuitBreaker, InMemoryCircuitBreaker>();
 

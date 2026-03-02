@@ -16,7 +16,8 @@ public class PolicyConfig
 {
     public string PrimaryModel { get; set; } = string.Empty;
     public List<string>? Fallbacks { get; set; }
-    public bool ToolsEnabled { get; set; } = false; // Aktivoi function calling -agenttiloop (search_documents + query_database)
+    public bool ToolsEnabled { get; set; } = false;   // Aktivoi function calling -agenttiloop
+    public bool RagEnabled { get; set; } = false;      // Aktivoi RAG-haku ennen agenttilooppia
     public string QueryBackend { get; set; } = "cosmos"; // "cosmos" | "mssql"
 }
 
@@ -35,6 +36,9 @@ public interface IRoutingEngine
 
     // Palauttaa query-backendin nimen ("cosmos" tai "mssql") pyynnön policyn perusteella.
     string GetQueryBackend(ChatRequest request);
+
+    // Palauttaa true jos pyynnön policyn RagEnabled=true (RAG-haku ennen agenttilooppia).
+    bool IsRagEnabled(ChatRequest request);
 }
 
 // Valitsee oikean modelKeyn pyynnön Policy-kentän ja appsettings-konfiguraation perusteella.
@@ -72,6 +76,14 @@ public class RoutingEngine : IRoutingEngine
         if (!_policyOptions.Policies.TryGetValue(policyName, out var policy))
             policy = _policyOptions.Policies.GetValueOrDefault(DefaultPolicy);
         return policy?.QueryBackend ?? "cosmos";
+    }
+
+    public bool IsRagEnabled(ChatRequest request)
+    {
+        var policyName = request.Policy ?? DefaultPolicy;
+        if (!_policyOptions.Policies.TryGetValue(policyName, out var policy))
+            policy = _policyOptions.Policies.GetValueOrDefault(DefaultPolicy);
+        return policy?.RagEnabled ?? false;
     }
 
     public IReadOnlyList<string> ResolveModelChain(ChatRequest request)

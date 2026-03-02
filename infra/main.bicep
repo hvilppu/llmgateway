@@ -53,6 +53,15 @@ param gpt4Capacity int = 10
 @description('gpt-4o-mini -deploymentin TPM-kapasiteetti (tuhansina).')
 param gpt4oMiniCapacity int = 20
 
+@description('Deployment name for text-embedding-3-small (käytetään RAG-embeddaukseen).')
+param embeddingDeploymentName string = 'embedding-deployment'
+
+@description('text-embedding-3-small -mallin versio.')
+param embeddingModelVersion string = '1'
+
+@description('Embedding-deploymentin TPM-kapasiteetti (tuhansina).')
+param embeddingCapacity int = 10
+
 // ── Cosmos DB ─────────────────────────────────────────────────────────────────
 
 @description('Globally unique name for the Cosmos DB account.')
@@ -63,6 +72,9 @@ param cosmosDatabaseName string = 'ragdb'
 
 @description('Cosmos DB container name.')
 param cosmosContainerName string = 'documents'
+
+@description('Cosmos DB container name for monthly RAG reports.')
+param cosmosRaportitContainerName string = 'kuukausiraportit'
 
 // ── MS SQL ────────────────────────────────────────────────────────────────────
 
@@ -150,6 +162,23 @@ resource gpt4oMiniDeployment 'Microsoft.CognitiveServices/accounts/deployments@2
   dependsOn: [gpt4Deployment] // peräkkäinen luonti vaaditaan
 }
 
+resource embeddingDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024-04-01-preview' = {
+  parent: openAI
+  name: embeddingDeploymentName
+  sku: {
+    name: 'Standard'
+    capacity: embeddingCapacity
+  }
+  properties: {
+    model: {
+      format: 'OpenAI'
+      name: 'text-embedding-3-small'
+      version: embeddingModelVersion
+    }
+  }
+  dependsOn: [gpt4oMiniDeployment] // peräkkäinen luonti vaaditaan
+}
+
 // ── Cosmos DB ─────────────────────────────────────────────────────────────────
 
 resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = {
@@ -168,6 +197,10 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = {
     consistencyPolicy: {
       defaultConsistencyLevel: 'Session'
     }
+    // Vaaditaan VectorDistance-vektorihaulle kuukausiraportit-säiliössä
+    capabilities: [
+      { name: 'EnableNoSQLVectorSearch' }
+    ]
   }
 }
 
@@ -188,6 +221,40 @@ resource cosmosContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/con
       partitionKey: {
         paths: ['/id']
         kind: 'Hash'
+      }
+    }
+  }
+}
+
+// Kuukausiraportit-säiliö vektori-indeksillä RAG-hakua varten.
+// text-embedding-3-small tuottaa 1536-ulotteisen float32-vektorin.
+resource raportitContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-05-15-preview' = {
+  parent: cosmosDatabase
+  name: cosmosRaportitContainerName
+  properties: {
+    resource: {
+      id: cosmosRaportitContainerName
+      partitionKey: {
+        paths: ['/id']
+        kind: 'Hash'
+      }
+      vectorEmbeddingPolicy: {
+        vectorEmbeddings: [
+          {
+            path: '/embedding'
+            dataType: 'float32'
+            dimensions: 1536
+            distanceFunction: 'cosine'
+          }
+        ]
+      }
+      indexingPolicy: {
+        vectorIndexes: [
+          {
+            path: '/embedding'
+            type: 'quantizedFlat'
+          }
+        ]
       }
     }
   }
@@ -270,6 +337,7 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'AzureOpenAI__RetryDelayMs',   value: string(azureOpenAIRetryDelayMs) }
         { name: 'AzureOpenAI__Deployments__gpt4',      value: gpt4DeploymentName }
         { name: 'AzureOpenAI__Deployments__gpt4oMini', value: gpt4oMiniDeploymentName }
+        { name: 'AzureOpenAI__EmbeddingDeployment',    value: embeddingDeploymentName }
 
         // Policies
         { name: 'Policies__chat_default__PrimaryModel',  value: 'gpt4oMini' }
@@ -281,11 +349,20 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'Policies__tools_sql__PrimaryModel',      value: 'gpt4' }
         { name: 'Policies__tools_sql__ToolsEnabled',      value: 'true' }
         { name: 'Policies__tools_sql__QueryBackend',      value: 'mssql' }
+        { name: 'Policies__rag__PrimaryModel',            value: 'gpt4' }
+        { name: 'Policies__rag__ToolsEnabled',            value: 'true' }
+        { name: 'Policies__rag__RagEnabled',              value: 'true' }
+        { name: 'Policies__rag__QueryBackend',            value: 'cosmos' }
 
         // Cosmos DB — connection string luetaan luodusta resurssista
         { name: 'CosmosRag__ConnectionString', value: cosmosAccount.listConnectionStrings().connectionStrings[0].connectionString }
         { name: 'CosmosRag__DatabaseName',     value: cosmosDatabaseName }
         { name: 'CosmosRag__ContainerName',    value: cosmosContainerName }
+
+        // RAG-palvelu — kuukausiraportit-säiliö semanttiseen hakuun
+        { name: 'Rag__DatabaseName',           value: cosmosDatabaseName }
+        { name: 'Rag__RaportitContainerName',  value: cosmosRaportitContainerName }
+        { name: 'Rag__TopK',                   value: '3' }
 
         // MS SQL
         { name: 'Sql__ConnectionString', value: 'Server=${sqlServer.properties.fullyQualifiedDomainName};Database=${sqlDatabaseName};User Id=${sqlAdminLogin};Password=${sqlAdminPassword};Encrypt=True;TrustServerCertificate=False;' }
@@ -357,6 +434,14 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
 
         // MS SQL — sama server kuin App Servicella
         { name: 'Sql__ConnectionString', value: 'Server=${sqlServer.properties.fullyQualifiedDomainName};Database=${sqlDatabaseName};User Id=${sqlAdminLogin};Password=${sqlAdminPassword};Encrypt=True;TrustServerCertificate=False;' }
+
+        // Kuukausiraporttien generointi — Azure OpenAI (sama resurssi kuin App Servicella)
+        { name: 'MonthlyReport__AzureOpenAIEndpoint',       value: openAI.properties.endpoint }
+        { name: 'MonthlyReport__AzureOpenAIApiKey',         value: openAI.listKeys().key1 }
+        { name: 'MonthlyReport__ApiVersion',                value: azureOpenAIApiVersion }
+        { name: 'MonthlyReport__CompletionDeploymentName',  value: gpt4oMiniDeploymentName }
+        { name: 'MonthlyReport__EmbeddingDeploymentName',   value: embeddingDeploymentName }
+        { name: 'MonthlyReport__ReportContainerName',       value: cosmosRaportitContainerName }
 
         // Application Insights — sama instanssi kuin App Servicella
         { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsights.properties.ConnectionString }

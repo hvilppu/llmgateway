@@ -31,6 +31,25 @@ public static class ChatEndpoints
                "Käytä työkalua aina kun kysymys koskee dataa.";
     }
 
+    // RAG-polun system prompt. RAG-konteksti ja skeema injektoidaan dynaamisesti ajonaikana.
+    private static string BuildRagSystemPrompt(string ragContext, string schema)
+    {
+        var contextSection = string.IsNullOrEmpty(ragContext) ? "" :
+            $"\nRelevantit sääkuvaukset kontekstina:\n{ragContext}\n";
+        var schemaSection = string.IsNullOrEmpty(schema) ? "" : $"\nTietokannan skeema:\n{schema}\n";
+        return "Olet assistentti joka vastaa AINOASTAAN Suomen kaupunkien lämpötila- ja säädataan liittyviin kysymyksiin. " +
+               "Vastaa suomeksi. Jos kysymys ei liity aiheeseen, kieltäydy kohteliaasti. " +
+               contextSection +
+               "Sinulla on käytettävissä työkalu:\n" +
+               "- query_database: suorita Cosmos DB SQL -kysely tarkkoja lukuja varten" +
+               schemaSection +
+               "\nTÄRKEÄ: Tarkat luvut haet AINA query_database-työkalulla. " +
+               "Sääkuvaukset ovat vain kontekstia — älä käytä niistä lukuja suoraan vastauksessasi.\n" +
+               "TÄRKEÄ RAJOITUS: Cosmos DB SQL ei tue ORDER BY:tä GROUP BY:n kanssa. " +
+               "Kun haet kylmintä tai lämpimintä kuukautta: hae KAIKKI kuukaudet GROUP BY:llä (ilman ORDER BY), " +
+               "katso palautetut kuukausikeskiarvot ja päättele itse mikä on pienin tai suurin.";
+    }
+
     // MS SQL -polun system prompt. Skeema injektoidaan dynaamisesti ajonaikana.
     private static string BuildSqlSystemPrompt(string schema)
     {
@@ -128,6 +147,7 @@ public static class ChatEndpoints
             ChatRequest request,
             IAzureOpenAIClient client,
             IRoutingEngine routingEngine,
+            IRagService ragService,
             [FromKeyedServices("cosmos")] IQueryService cosmosQueryService,
             [FromKeyedServices("mssql")]  IQueryService sqlQueryService,
             [FromKeyedServices("cosmos")] ISchemaProvider cosmosSchemaProvider,
@@ -164,7 +184,21 @@ public static class ChatEndpoints
             {
                 var modelChain = routingEngine.ResolveModelChain(request);
 
-                if (routingEngine.IsToolsEnabled(request))
+                if (routingEngine.IsRagEnabled(request))
+                {
+                    // RAG-polku: embedding-haku → konteksti → agenttiloop Cosmos-työkaluilla
+                    var schema = await cosmosSchemaProvider.GetSchemaAsync(cancellationToken);
+                    var queryEmbedding = await client.GetEmbeddingAsync(request.Message, cancellationToken);
+                    var ragContext = await ragService.GetContextAsync(queryEmbedding, cancellationToken);
+                    var systemPrompt = BuildRagSystemPrompt(ragContext, schema);
+
+                    logger.LogInformation("RAG policy resolved. ContextLength={ContextLength}, SchemaLength={SchemaLength}",
+                        ragContext.Length, schema.Length);
+
+                    return await HandleWithToolsAsync(
+                        request, requestId, modelChain, client, cosmosQueryService, CosmosTools, systemPrompt, logger, cancellationToken);
+                }
+                else if (routingEngine.IsToolsEnabled(request))
                 {
                     // Valitse oikea backend, tool-kuvaukset ja schema provider policyn perusteella
                     var backend        = routingEngine.GetQueryBackend(request);

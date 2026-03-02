@@ -37,7 +37,8 @@ public class CosmosSyncService
         _logger = logger;
     }
 
-    public async Task SyncAsync(CancellationToken cancellationToken)
+    // Palauttaa synkronoitujen dokumenttien määrän (0 = ei uusia).
+    public async Task<int> SyncAsync(CancellationToken cancellationToken)
     {
         // 1. Lue edellinen vesimerkki SQL:stä
         long lastSyncedTs = await ReadLastSyncedTsAsync(cancellationToken);
@@ -49,13 +50,14 @@ public class CosmosSyncService
         if (docs.Count == 0)
         {
             _logger.LogInformation("Ei uusia dokumentteja synkronoitavana.");
-            return;
+            return 0;
         }
 
         _logger.LogInformation("Löydetty {Count} synkronoitavaa dokumenttia.", docs.Count);
 
         // 3. Upsertaa SQL:ään ja päivitä vesimerkki atomisesti samassa transaktiossa
         await UpsertToSqlAsync(docs, cancellationToken);
+        return docs.Count;
     }
 
     // Lukee last_synced_ts-arvon sync_state-taulusta.

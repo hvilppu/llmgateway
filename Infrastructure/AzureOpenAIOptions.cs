@@ -8,6 +8,7 @@ public class AzureOpenAIOptions
     public string ApiVersion { get; set; } = "2024-02-15-preview";
     // modelKey (esim. "gpt4") → Azure-portaalissa luotu deploymentName
     public Dictionary<string, string> Deployments { get; set; } = new();
+    public string EmbeddingDeployment { get; set; } = string.Empty; // text-embedding-3-small -deploymentin nimi
     public int TimeoutMs { get; set; } = 15000;     // Per-kutsu timeout millisekunteina
     public int MaxRetries { get; set; } = 2;         // Uudelleenyritykset transientteihin virheisiin
     public int RetryDelayMs { get; set; } = 500;     // Perusviive ennen retrytä (kerrotaan attempt-numerolla)

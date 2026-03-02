@@ -12,6 +12,9 @@ public interface IAzureOpenAIClient
 {
     Task<ChatResponse> GetChatCompletionAsync(ChatRequest request, string requestId, string modelKey, string? systemPrompt = null, CancellationToken cancellationToken = default);
 
+    // Muuntaa tekstin vektoriupotukseksi embedding-mallilla.
+    Task<float[]> GetEmbeddingAsync(string text, CancellationToken cancellationToken = default);
+
     // Raaka chat completion -kutsu function calling -agenttilooppia varten.
     // messages: koko viestihistoria (role+content+tool_calls+tool_call_id).
     // tools: tool-määrittelyt JSON-objekteina (voi olla null).
@@ -316,6 +319,35 @@ public class AzureOpenAIClient : IAzureOpenAIClient
         }
 
         throw lastException ?? new Exception("Azure OpenAI raw request failed with unknown error");
+    }
+
+    // Muuntaa tekstin vektoriupotukseksi. Käytetään RAG-haussa kysymyksen embeddaamiseen.
+    public async Task<float[]> GetEmbeddingAsync(string text, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(_options.EmbeddingDeployment))
+            throw new InvalidOperationException("AzureOpenAI:EmbeddingDeployment ei ole konfiguroitu");
+
+        var url = $"/openai/deployments/{_options.EmbeddingDeployment}/embeddings?api-version={_options.ApiVersion}";
+        var payload = new { input = text };
+        var json = JsonSerializer.Serialize(payload, JsonOptions);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(_options.TimeoutMs);
+
+        using var response = await _httpClient.PostAsync(url, content, cts.Token);
+        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+            throw new HttpRequestException($"Embedding-kutsu epäonnistui: {(int)response.StatusCode}");
+
+        using var doc = JsonDocument.Parse(responseBody);
+        return doc.RootElement
+            .GetProperty("data")[0]
+            .GetProperty("embedding")
+            .EnumerateArray()
+            .Select(e => e.GetSingle())
+            .ToArray();
     }
 
     // 408 Timeout, 429 Rate limit ja 5xx ovat tilapäisiä — kannattaa yrittää uudelleen.

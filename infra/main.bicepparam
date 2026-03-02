@@ -21,18 +21,21 @@ param sqlAdminLogin   = 'sqladmin'
 param sqlDatabaseName = 'llmgateway'
 
 // ── Cosmos DB ─────────────────────────────────────────────────────────────────
-param cosmosDatabaseName  = 'ragdb'
-param cosmosContainerName = 'documents'
+param cosmosDatabaseName         = 'ragdb'
+param cosmosContainerName        = 'documents'
+param cosmosRaportitContainerName = 'kuukausiraportit'
 
 // ── OpenAI model deploymentit ─────────────────────────────────────────────────
 param gpt4DeploymentName      = 'gpt4-deployment'
 param gpt4oMiniDeploymentName = 'gpt4o-mini-deployment'
+param embeddingDeploymentName = 'embedding-deployment'
 
 // Jätä oletusarvot tai ylikirjoita tarvittaessa:
 // param gpt4ModelVersion                   = '2024-11-20'
 // param gpt4oMiniModelVersion              = '2024-07-18'
 // param gpt4Capacity                       = 10
 // param gpt4oMiniCapacity                  = 20
+// param embeddingCapacity                  = 10
 // param azureOpenAIApiVersion              = '2024-02-15-preview'
 // param azureOpenAITimeoutMs               = 15000
 // param azureOpenAIMaxRetries              = 2
