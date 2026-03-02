@@ -139,3 +139,29 @@ Infra-muutokset: aja `infra.yml` manuaalisesti GitHub Actions → **Provision In
 | `.github/workflows/deploy.yml` | Koodi-deploy — käynnistyy automaattisesti push:lla |
 | `.github/workflows/infra.yml` | Infra-deploy — ajetaan manuaalisesti |
 
+
+## CI/CD GitHub
+CI/CD-workflowit ovat .github/workflows/-kansiossa:                                         
+  
+  deploy.yml — automaattinen deploy                                                           
+  - Triggeröityy kun pushataan main-haaraan (tai manuaalisesti workflow_dispatch)               
+  - Tekee: dotnet restore → build → test → publish → deploy Azure App Serviceen               
+  - Vaatii GitHub-asetukset:                                                                  
+    - Secret: AZURE_WEBAPP_PUBLISH_PROFILE
+    - Variable: AZURE_WEBAPP_NAME
+
+  infra.yml — infrastruktuuri (Bicep)
+  - Triggeröityy vain manuaalisesti (workflow_dispatch), ei commitista
+  - Ajaa az deployment group create Bicep-templatella
+  - Vaatii Secrets: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, GATEWAY_API_KEY,
+  AZURE_OPENAI_API_KEY, AZURE_COSMOS_CONNECTION_STRING
+  - Variable: AZURE_RESOURCE_GROUP
+
+Eli commit main-haaraan laukaisee automaattisesti deploy.yml-buildin. Infra deployataan erikseen manuaalisesti GitHubista.
+
+1. Mene repon GitHub-sivulle                                                                                                                          
+2. Klikkaa 2.2.1 Actions-välilehti                                                                                                                                                 
+3. Valitse vasemmalta listalta "Provision Infrastructure"                                                                                                                    
+4. Klikkaa "Run workflow" -nappi (oikealla puolella)
+5. Valitse haara (main) → "Run workflow"
+

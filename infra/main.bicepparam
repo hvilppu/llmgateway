@@ -16,9 +16,6 @@ param azureOpenAIApiVersion = '2024-02-15-preview'
 param gpt4DeploymentName      = 'gpt4-deployment'
 param gpt4oMiniDeploymentName = 'gpt4o-mini-deployment'
 
-// Embedding (RAG / function calling)
-param embeddingDeploymentName = 'text-embedding-3-small'
-
 // Cosmos DB — function calling -agenttilooppia varten (tools-policy)
 // param cosmosConnectionString  = 'AccountEndpoint=https://...;AccountKey=...;'  // EI tähän — käytä pipeline-secretiä
 param cosmosDatabaseName      = 'ragdb'

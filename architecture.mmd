@@ -1,0 +1,69 @@
+flowchart TD
+    Client([Käyttäjä / HTTP-client])
+    AppInsights[("Application Insights\ntelemetria")]
+
+    subgraph GW["Azure App Service — LlmGateway (.NET 10)"]
+        SF["UseStaticFiles\nwwwroot/index.html\n(ei API-avainta)"]
+        MW1[HTTPS Redirection]
+        MW2["ApiKeyMiddleware\nX-Api-Key → 401 jos puuttuu"]
+        EP["ChatEndpoints\nPOST /api/chat → ChatResponse"]
+        RE["RoutingEngine\nResolveModelChain · IsToolsEnabled\nGetQueryBackend"]
+        CB["InMemoryCircuitBreaker\nper-model: Closed → Open → Half-Open"]
+        OAI["AzureOpenAIClient\nRetry max 2 · Timeout 15 s"]
+
+        subgraph SP["Yksinkertainen polku — ToolsEnabled=false"]
+            SC["GetChatCompletionAsync\nFallback-ketju mallien välillä"]
+        end
+
+        subgraph AL["Agenttiloop — ToolsEnabled=true · max 5 kierrosta"]
+            RC["GetRawCompletionAsync\n+ tool definitions\nFallback-ketju mallien välillä"]
+            FIN{finish_reason?}
+            CQS["CosmosQueryService\n+ CosmosSchemaProvider\ndynaaminen skeema, 60 min"]
+            SQS["SqlQueryService\n+ SqlSchemaProvider\ndynaaminen skeema, 60 min"]
+        end
+    end
+
+    AzOAI[("Azure OpenAI\nGPT-4 · GPT-4o-mini")]
+    CosmDB[("Cosmos DB\nragdb / documents")]
+    SqlDB[("Azure SQL\ntaulu: mittaukset")]
+
+    Client -->|"GET / (staattinen)"| SF
+    SF -->|"200 index.html"| Client
+    Client -->|"POST /api/chat"| MW1
+    MW1 --> MW2
+    MW2 -->|"401 Unauthorized"| Client
+    MW2 --> EP
+    EP -->|"400 Bad Request\ntyhjä / > 4000 merkkiä"| Client
+    EP --> RE
+    RE -->|"ToolsEnabled=false"| SC
+    RE -->|"ToolsEnabled=true"| RC
+    SC --> OAI
+    RC --> OAI
+    OAI <-->|"IsOpen · RecordFailure · RecordSuccess"| CB
+    OAI -->|"HTTP POST"| AzOAI
+    AzOAI --> OAI
+    RC --> FIN
+    FIN -->|stop| EP
+    FIN -->|"tool_calls · backend=cosmos"| CQS
+    FIN -->|"tool_calls · backend=mssql"| SQS
+    CQS -->|"Cosmos SQL SELECT"| CosmDB
+    CosmDB -->|JSON| CQS
+    SQS -->|"T-SQL SELECT"| SqlDB
+    SqlDB -->|JSON| SQS
+    CQS -->|"JSON tulokset → loop"| RC
+    SQS -->|"JSON tulokset → loop"| RC
+    EP -->|"200 / 503 / 502 / 500"| Client
+    GW -.->|"telemetria"| AppInsights
+
+    style GW fill:#EBF5FB,stroke:#0078d4,stroke-width:2px
+    style SP fill:#f0f9ff,stroke:#93c5fd,stroke-dasharray:5 5
+    style AL fill:#eff6ff,stroke:#3b82f6,stroke-dasharray:5 5
+    style CB fill:#fee2e2,stroke:#ef4444,color:#991b1b
+    style CQS fill:#dcfce7,stroke:#16a34a
+    style SQS fill:#dcfce7,stroke:#16a34a
+    style SF fill:#fef9c3,stroke:#ca8a04
+    style AzOAI fill:#f3f4f6,stroke:#6b7280
+    style CosmDB fill:#f3f4f6,stroke:#6b7280
+    style SqlDB fill:#f3f4f6,stroke:#6b7280
+    style Client fill:#f3f4f6,stroke:#6b7280
+    style AppInsights fill:#f3f4f6,stroke:#6b7280
