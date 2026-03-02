@@ -166,7 +166,7 @@ resource embeddingDeployment 'Microsoft.CognitiveServices/accounts/deployments@2
   parent: openAI
   name: embeddingDeploymentName
   sku: {
-    name: 'Standard'
+    name: 'GlobalStandard'  // text-embedding-3-small vaatii GlobalStandard Sweden Centralissa
     capacity: embeddingCapacity
   }
   properties: {
