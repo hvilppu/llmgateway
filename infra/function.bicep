@@ -74,6 +74,8 @@ resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
 }
 
 // ── Consumption Plan (serverless, ~0 €/kk idle) ───────────────────────────────
+// Windows-pohjainen: Azure rajoittaa Linux Consumption -plaanin käyttöä resurssigrupeissa
+// joissa on muita App Service -resursseja. .NET isolated worker toimii kummallakin.
 
 resource consumptionPlan 'Microsoft.Web/serverfarms@2023-12-01' = {
   name: '${functionAppName}-plan'
@@ -82,10 +84,6 @@ resource consumptionPlan 'Microsoft.Web/serverfarms@2023-12-01' = {
     name: 'Y1'
     tier: 'Dynamic'
   }
-  kind: 'linux'
-  properties: {
-    reserved: true // pakollinen Linux-hostingille
-  }
 }
 
 // ── Function App ─────────────────────────────────────────────────────────────
@@ -93,12 +91,11 @@ resource consumptionPlan 'Microsoft.Web/serverfarms@2023-12-01' = {
 resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
   name: functionAppName
   location: location
-  kind: 'functionapp,linux'
+  kind: 'functionapp'
   properties: {
     serverFarmId: consumptionPlan.id
     httpsOnly: true
     siteConfig: {
-      linuxFxVersion: 'DOTNET-ISOLATED|10.0'
       appSettings: [
         // Functions runtime
         { name: 'FUNCTIONS_EXTENSION_VERSION', value: '~4' }
