@@ -181,7 +181,7 @@ resource embeddingDeployment 'Microsoft.CognitiveServices/accounts/deployments@2
 
 // ── Cosmos DB ─────────────────────────────────────────────────────────────────
 
-resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = {
+resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15-preview' = {
   name: cosmosAccountName
   location: location
   kind: 'GlobalDocumentDB'
