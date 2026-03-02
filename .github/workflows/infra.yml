@@ -52,12 +52,13 @@ jobs:
       - name: Deploy Bicep
         run: |
           az deployment group create \
-            --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --template-file infra/main.bicep \
             --parameters infra/main.bicepparam \
-            --parameters gatewayApiKey=${{ secrets.GATEWAY_API_KEY }} \
-            --parameters azureOpenAIApiKey=${{ secrets.AZURE_OPENAI_API_KEY }} \
-            --parameters cosmosConnectionString=${{ secrets.AZURE_COSMOS_CONNECTION_STRING }} \
+            --parameters "gatewayApiKey=${{ secrets.GATEWAY_API_KEY }}" \
+            --parameters "azureOpenAIApiKey=${{ secrets.AZURE_OPENAI_API_KEY }}" \
+            --parameters "cosmosConnectionString=${{ secrets.AZURE_COSMOS_CONNECTION_STRING }}" \
+            --parameters "sqlAdminPassword=${{ secrets.AZURE_SQL_ADMIN_PASSWORD }}" \
             --output table
 
       - name: Show App URL
