@@ -87,40 +87,72 @@ Aja infra (idempotent — turvallista ajaa uudelleen myös muutosten jälkeen):
 az deployment group create --resource-group rg-llmgateway-prod --template-file infra/main.bicep --parameters infra/main.bicepparam --parameters gatewayApiKey="<avain>" --parameters azureOpenAIApiKey="<avain>" --parameters cosmosConnectionString="<yhteysjono>" --parameters sqlAdminPassword="<salasana>"
 ```
 
-### 4b. Migroi data Cosmos DB:stä MS SQL:ään
+### 4b. Provisioi SyncFunction (Cosmos → SQL automaattisynkronointi)
 
-Suorita kerran infra-provisionoinnin jälkeen. Hae SQL Serverin FQDN:
+SyncFunction pyörii Azure Functions Consumption-planilla ja synkronoi Cosmos DB:n muutokset
+MS SQL:ään 15 minuutin välein. Se myös ajaa SQL-migraatiot (taulujen luonnit) automaattisesti
+käynnistyksessä — manuaalista `seed_mssql.py` -ajoa ei tarvita.
 
-```bash
-az sql server show --name <appName>-sql --resource-group rg-llmgateway-prod --query fullyQualifiedDomainName --output tsv
+Päivitä `infra/function.bicepparam`:
+```
+param functionAppName = 'xyz-sync-function-prod'   # oltava globaalisti uniikki
+param appName         = 'xyz-llmgateway-prod'       # sama kuin main.bicepparam:ssä
 ```
 
-Aja migraatio:
+Tarkista mitä muuttuu:
 ```bash
-pip install azure-cosmos pyodbc
-python tools/seed_mssql.py \
-  --cosmos-connection-string "<AZURE_COSMOS_CONNECTION_STRING>" \
-  --cosmos-database mydb \
-  --cosmos-container documents \
-  --mssql-connection-string "Driver={ODBC Driver 17 for SQL Server};Server=<fqdn>;Database=llmgateway;UID=sqladmin;PWD=<salasana>;Encrypt=yes;TrustServerCertificate=no;"
+az deployment group what-if \
+  --resource-group rg-llmgateway-prod \
+  --template-file infra/function.bicep \
+  --parameters infra/function.bicepparam \
+  --parameters cosmosConnectionString="<AZURE_COSMOS_CONNECTION_STRING>" \
+  --parameters sqlAdminPassword="<salasana>"
 ```
 
-Skripti on idempotentti (MERGE) — turvallista ajaa uudelleen.
+Provisioi Function App -infrastruktuuri:
+```bash
+az deployment group create \
+  --resource-group rg-llmgateway-prod \
+  --template-file infra/function.bicep \
+  --parameters infra/function.bicepparam \
+  --parameters cosmosConnectionString="<AZURE_COSMOS_CONNECTION_STRING>" \
+  --parameters sqlAdminPassword="<salasana>"
+```
+
+Hae publish profile (tarvitaan GitHub Secretiin):
+```
+Azure Portal → Function App → Overview → Get publish profile → lataa tiedosto → kopioi sisältö
+```
+
+Aseta GitHub-asetukset (lisäys olemassaolevien secretien rinnalle):
+
+| Tyyppi   | Nimi                              | Arvo                                                |
+|----------|-----------------------------------|-----------------------------------------------------|
+| Secret   | `AZURE_FUNCTION_PUBLISH_PROFILE`  | Function App → Get publish profile                  |
+| Variable | `AZURE_FUNCTION_APP_NAME`         | `xyz-sync-function-prod`                            |
+
+Deploy käynnistyy automaattisesti kun `SyncFunction/`-hakemistoon pushataan muutoksia
+(tai manuaalisesti: Actions → **Deploy Function** → **Run workflow**).
+
+> **Takaportti:** `tools/seed_mssql.py` on yhä käytettävissä manuaaliseen bulk-siirtoon
+> esimerkiksi ensimmäisen käyttöönoton tai vianetsinnän yhteydessä.
 
 ### 5. Aseta GitHub Secrets ja Variables
 
-| Tyyppi   | Nimi                             | Arvo                                                                  |
-|----------|----------------------------------|-----------------------------------------------------------------------|
-| Secret   | `AZURE_WEBAPP_PUBLISH_PROFILE`   | Azure Portal → App Service → Get publish profile                      |
-| Secret   | `GATEWAY_API_KEY`                | Itse generoitu — asiakkaat lähettävät `X-Api-Key` -headerissa         |
-| Secret   | `AZURE_OPENAI_API_KEY`           | Azure Portal → Azure OpenAI → Keys and Endpoint → KEY 1               |
-| Secret   | `AZURE_COSMOS_CONNECTION_STRING` | Azure Portal → Cosmos DB → Keys → PRIMARY CONNECTION STRING           |
-| Secret   | `AZURE_SQL_ADMIN_PASSWORD`       | MS SQL -ylläpitäjän salasana (sama kuin bicep-parametrissa)           |
-| Secret   | `AZURE_CLIENT_ID`                | Service principal OIDC (infra.yml)                                    |
-| Secret   | `AZURE_TENANT_ID`                | Service principal OIDC (infra.yml)                                    |
-| Secret   | `AZURE_SUBSCRIPTION_ID`          | Service principal OIDC (infra.yml)                                    |
-| Variable | `AZURE_WEBAPP_NAME`              | `xyz-llmgateway-prod`                                                 |
-| Variable | `AZURE_RESOURCE_GROUP`           | `rg-llmgateway-prod`                                                  |
+| Tyyppi   | Nimi                              | Arvo                                                                  |
+|----------|-----------------------------------|-----------------------------------------------------------------------|
+| Secret   | `AZURE_WEBAPP_PUBLISH_PROFILE`    | Azure Portal → App Service → Get publish profile                      |
+| Secret   | `AZURE_FUNCTION_PUBLISH_PROFILE`  | Azure Portal → Function App → Get publish profile                     |
+| Secret   | `GATEWAY_API_KEY`                 | Itse generoitu — asiakkaat lähettävät `X-Api-Key` -headerissa         |
+| Secret   | `AZURE_OPENAI_API_KEY`            | Azure Portal → Azure OpenAI → Keys and Endpoint → KEY 1               |
+| Secret   | `AZURE_COSMOS_CONNECTION_STRING`  | Azure Portal → Cosmos DB → Keys → PRIMARY CONNECTION STRING           |
+| Secret   | `AZURE_SQL_ADMIN_PASSWORD`        | MS SQL -ylläpitäjän salasana (sama kuin bicep-parametrissa)           |
+| Secret   | `AZURE_CLIENT_ID`                 | Service principal OIDC (infra.yml)                                    |
+| Secret   | `AZURE_TENANT_ID`                 | Service principal OIDC (infra.yml)                                    |
+| Secret   | `AZURE_SUBSCRIPTION_ID`           | Service principal OIDC (infra.yml)                                    |
+| Variable | `AZURE_WEBAPP_NAME`               | `xyz-llmgateway-prod`                                                 |
+| Variable | `AZURE_FUNCTION_APP_NAME`         | `xyz-sync-function-prod`                                              |
+| Variable | `AZURE_RESOURCE_GROUP`            | `rg-llmgateway-prod`                                                  |
 
 ### 6. Deploy
 
@@ -134,9 +166,12 @@ Infra-muutokset: aja `infra.yml` manuaalisesti GitHub Actions → **Provision In
 
 | Tiedosto | Kuvaus |
 |----------|--------|
-| `infra/main.bicep` | App Service Plan, Web App, Log Analytics, App Insights |
-| `infra/main.bicepparam` | Parametriarvot (ei salaisuuksia) |
-| `.github/workflows/deploy.yml` | Koodi-deploy — käynnistyy automaattisesti push:lla |
+| `infra/main.bicep` | App Service Plan, Web App, SQL Server, Log Analytics, App Insights |
+| `infra/main.bicepparam` | Parametriarvot pääinfrastruktuurille (ei salaisuuksia) |
+| `infra/function.bicep` | Storage Account, Consumption Plan, Function App |
+| `infra/function.bicepparam` | Parametriarvot Function App:lle (ei salaisuuksia) |
+| `.github/workflows/deploy.yml` | LlmGateway-koodi-deploy — käynnistyy automaattisesti push:lla |
+| `.github/workflows/deploy-function.yml` | SyncFunction-deploy — käynnistyy kun SyncFunction/ muuttuu |
 | `.github/workflows/infra.yml` | Infra-deploy — ajetaan manuaalisesti |
 
 
@@ -149,6 +184,13 @@ CI/CD-workflowit ovat .github/workflows/-kansiossa:
   - Vaatii GitHub-asetukset:                                                                  
     - Secret: AZURE_WEBAPP_PUBLISH_PROFILE
     - Variable: AZURE_WEBAPP_NAME
+
+  deploy-function.yml — SyncFunction-deploy
+  - Triggeröityy kun SyncFunction/-hakemistoon pushataan muutoksia (tai manuaalisesti workflow_dispatch)
+  - Tekee: dotnet restore → build → publish → deploy Azure Functions -palveluun
+  - Vaatii GitHub-asetukset:
+    - Secret: AZURE_FUNCTION_PUBLISH_PROFILE
+    - Variable: AZURE_FUNCTION_APP_NAME
 
   infra.yml — infrastruktuuri (Bicep)
   - Triggeröityy vain manuaalisesti (workflow_dispatch), ei commitista

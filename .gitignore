@@ -10,6 +10,7 @@ obj/
 # Secrets — EI koskaan versionhallintaan
 appsettings.Development.json
 appsettings.Production.json
+local.settings.json
 
 # Logs
 *.log

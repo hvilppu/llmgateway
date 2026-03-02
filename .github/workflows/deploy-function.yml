@@ -1,0 +1,48 @@
+# Buildaa ja deployaa SyncFunction Azure Functions -palveluun.
+# Triggeröityy kun koodia pushataan main-haaraan.
+#
+# Vaadittavat GitHub-asetukset:
+#   Secrets : AZURE_FUNCTION_PUBLISH_PROFILE  (ladataan Azure Portalista: Function App → Get publish profile)
+#   Variables: AZURE_FUNCTION_APP_NAME        (esim. heikkis-sync-function-prod)
+
+name: Deploy Function
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'SyncFunction/**'
+  workflow_dispatch:
+
+env:
+  DOTNET_VERSION: '10.0.x'
+
+jobs:
+  build-and-deploy:
+    name: Build & Deploy Function
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore SyncFunction/SyncFunction.csproj
+
+      - name: Build
+        run: dotnet build SyncFunction/SyncFunction.csproj --no-restore -c Release
+
+      - name: Publish
+        run: dotnet publish SyncFunction/SyncFunction.csproj -c Release -o publish-function --no-build
+
+      - name: Deploy to Azure Functions
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ vars.AZURE_FUNCTION_APP_NAME }}
+          publish-profile: ${{ secrets.AZURE_FUNCTION_PUBLISH_PROFILE }}
+          package: publish-function/
