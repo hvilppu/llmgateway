@@ -87,6 +87,10 @@ Aja infra (idempotent — turvallista ajaa uudelleen myös muutosten jälkeen):
 az deployment group create --resource-group rg-llmgateway-prod --template-file infra/main.bicep --parameters infra/main.bicepparam --parameters gatewayApiKey="<avain>" --parameters azureOpenAIApiKey="<avain>" --parameters cosmosConnectionString="<yhteysjono>" --parameters sqlAdminPassword="<salasana>"
 ```
 
+```bash
+az deployment group create --resource-group rg-llmgateway-prod --template-file infra/function.bicep --parameters infra/function.bicepparam --parameters cosmosConnectionString="<yhteysjono>" --parameters sqlAdminPassword="<salasana>"
+```
+
 ### 4b. Provisioi SyncFunction (Cosmos → SQL automaattisynkronointi)
 
 SyncFunction pyörii Azure Functions Consumption-planilla ja synkronoi Cosmos DB:n muutokset

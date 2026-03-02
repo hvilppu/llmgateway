@@ -9,11 +9,8 @@ using SyncFunction.Services;
 
 var builder = FunctionsApplication.CreateBuilder(args);
 
-builder.ConfigureFunctionsWorkerDefaults();
-
-// Application Insights -integraatio
+// Application Insights -integraatio (Worker v2: ConfigureFunctionsWorkerDefaults poistettu, sisäänrakennettu)
 builder.Services.AddApplicationInsightsTelemetryWorkerService();
-builder.Services.ConfigureFunctionsApplicationInsights();
 
 // Cosmos DB -asiakas — yksittäinen instanssi koko funktiosovellukselle (thread-safe)
 builder.Services.AddSingleton(sp =>

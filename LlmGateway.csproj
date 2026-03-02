@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <Compile Remove="LlmGateway.Tests\**" />
+    <Compile Remove="SyncFunction\**" />
   </ItemGroup>
 
 </Project>
