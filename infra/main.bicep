@@ -76,6 +76,9 @@ param cosmosContainerName string = 'documents'
 @description('Cosmos DB container name for monthly RAG reports.')
 param cosmosRaportitContainerName string = 'kuukausiraportit'
 
+@description('Luo vektori-indeksoidun kuukausiraportit-containerin. Vaatii että EnableNoSQLVectorSearch on ensin aktivoitu tilillä. Aseta true vasta toisella deploymentilla.')
+param deployVectorContainer bool = false
+
 // ── MS SQL ────────────────────────────────────────────────────────────────────
 
 @secure()
@@ -227,8 +230,9 @@ resource cosmosContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/con
 }
 
 // Kuukausiraportit-säiliö vektori-indeksillä RAG-hakua varten.
+// Luodaan vasta toisella deploymentilla (deployVectorContainer=true) kun capability on aktivoitunut.
 // text-embedding-3-small tuottaa 1536-ulotteisen float32-vektorin.
-resource raportitContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-05-15-preview' = {
+resource raportitContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-05-15-preview' = if (deployVectorContainer) {
   parent: cosmosDatabase
   name: cosmosRaportitContainerName
   properties: {

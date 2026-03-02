@@ -8,8 +8,7 @@
 #             AZURE_SUBSCRIPTION_ID
 #             GATEWAY_API_KEY             (X-Api-Key -headerin arvo)
 #             AZURE_SQL_ADMIN_PASSWORD    (MS SQL -ylläpitäjän salasana)
-#   Variables: AZURE_RESOURCE_GROUP       (esim. rg-llmgateway-prod)
-#              AZURE_COSMOS_ACCOUNT_NAME  (esim. heikkis-cosmos-prod)
+#   Variables: AZURE_RESOURCE_GROUP  (esim. rg-llmgateway-prod)
 #
 # Azure OpenAI API-avain ja Cosmos DB connection string luetaan automaattisesti
 # Bicepissä luoduista resursseista — erillisiä secretejä ei tarvita.
@@ -46,19 +45,10 @@ jobs:
             --location swedencentral \
             --output none
 
-      - name: Enable Cosmos DB Vector Search capability
-        run: |
-          # Aktivoidaan capability ennen Bicep-deploymenttia — voi kestää jopa 15 min.
-          # Epäonnistuu hiljaisesti jos tiliä ei ole vielä olemassa (ensimmäinen ajo).
-          az cosmosdb update \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --name "${{ vars.AZURE_COSMOS_ACCOUNT_NAME }}" \
-            --capabilities EnableNoSQLVectorSearch \
-            --output none 2>/dev/null \
-            && echo "Odotetaan 120 s capabilityn aktivoitumista..." && sleep 120 \
-            || echo "Cosmos-tiliä ei löydy tai capability jo aktiivinen — jatketaan."
-
-      - name: Deploy Bicep
+      # Vaihe 1: Luo kaikki resurssit PAITSI vektori-container.
+      # Cosmos-tili luodaan tässä vaiheessa capabilities-kentällä,
+      # mutta container odottaa vaiheeseen 3.
+      - name: Deploy Bicep (vaihe 1 — ilman vector-containeria)
         run: |
           az deployment group create \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
@@ -66,12 +56,43 @@ jobs:
             --parameters infra/main.bicepparam \
             --parameters "gatewayApiKey=${{ secrets.GATEWAY_API_KEY }}" \
             --parameters "sqlAdminPassword=${{ secrets.AZURE_SQL_ADMIN_PASSWORD }}" \
+            --parameters "deployVectorContainer=false" \
+            --name main-phase1 \
+            --output table
+
+      # Vaihe 2: Aktivoi capability CLI:llä ja odota että se ehtii propagoitua.
+      # Dokumentaation mukaan voi kestää jopa 15 min — odotetaan 180 s varmuuden vuoksi.
+      - name: Aktivoi Cosmos DB Vector Search ja odota
+        run: |
+          COSMOS_NAME=$(az cosmosdb list \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --query "[0].name" -o tsv)
+          echo "Cosmos-tili: $COSMOS_NAME"
+          az cosmosdb update \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "$COSMOS_NAME" \
+            --capabilities EnableNoSQLVectorSearch \
+            --output none
+          echo "Capability aktivoitu. Odotetaan 180 sekuntia propagoitumista..."
+          sleep 180
+
+      # Vaihe 3: Luo vektori-container nyt kun capability on varmasti aktiivinen.
+      - name: Deploy Bicep (vaihe 2 — vector-container)
+        run: |
+          az deployment group create \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --template-file infra/main.bicep \
+            --parameters infra/main.bicepparam \
+            --parameters "gatewayApiKey=${{ secrets.GATEWAY_API_KEY }}" \
+            --parameters "sqlAdminPassword=${{ secrets.AZURE_SQL_ADMIN_PASSWORD }}" \
+            --parameters "deployVectorContainer=true" \
+            --name main-phase2 \
             --output table
 
       - name: Show URLs
         run: |
           az deployment group show \
             --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
-            --name main \
+            --name main-phase2 \
             --query "{appUrl: properties.outputs.appUrl.value, functionUrl: properties.outputs.functionAppUrl.value}" \
             --output table
