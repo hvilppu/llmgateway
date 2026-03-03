@@ -7,7 +7,7 @@ using System.Text.Json;
 namespace SyncFunction.Services;
 
 // Cosmos DB -yhteysasetukset. Sidotaan appsettings-osioon "CosmosRag".
-public class CosmosRagOptions
+public class CosmosOptions
 {
     public string ConnectionString { get; set; } = string.Empty;
     public string DatabaseName { get; set; } = string.Empty;
@@ -21,13 +21,13 @@ public class CosmosRagOptions
 public class CosmosSyncService
 {
     private readonly CosmosClient _cosmosClient;
-    private readonly CosmosRagOptions _cosmosOptions;
+    private readonly CosmosOptions _cosmosOptions;
     private readonly SqlOptions _sqlOptions;
     private readonly ILogger<CosmosSyncService> _logger;
 
     public CosmosSyncService(
         CosmosClient cosmosClient,
-        IOptions<CosmosRagOptions> cosmosOptions,
+        IOptions<CosmosOptions> cosmosOptions,
         IOptions<SqlOptions> sqlOptions,
         ILogger<CosmosSyncService> logger)
     {

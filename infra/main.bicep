@@ -361,7 +361,6 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'Policies__tools_sql__ToolsEnabled',      value: 'true' }
         { name: 'Policies__tools_sql__QueryBackend',      value: 'mssql' }
         { name: 'Policies__rag__PrimaryModel',            value: 'gpt4' }
-        { name: 'Policies__rag__ToolsEnabled',            value: 'true' }
         { name: 'Policies__rag__RagEnabled',              value: 'true' }
         { name: 'Policies__rag__QueryBackend',            value: 'cosmos' }
 

@@ -26,7 +26,7 @@ public class MonthlyReportService
 {
     private readonly CosmosClient _cosmosClient;
     private readonly MonthlyReportOptions _reportOptions;
-    private readonly CosmosRagOptions _cosmosOptions;
+    private readonly CosmosOptions _cosmosOptions;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<MonthlyReportService> _logger;
 
@@ -35,7 +35,7 @@ public class MonthlyReportService
     public MonthlyReportService(
         CosmosClient cosmosClient,
         IOptions<MonthlyReportOptions> reportOptions,
-        IOptions<CosmosRagOptions> cosmosOptions,
+        IOptions<CosmosOptions> cosmosOptions,
         IHttpClientFactory httpClientFactory,
         ILogger<MonthlyReportService> logger)
     {

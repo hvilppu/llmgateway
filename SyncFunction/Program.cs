@@ -21,7 +21,7 @@ builder.Services.AddSingleton(sp =>
 });
 
 // Konfiguraatio-optiot
-builder.Services.Configure<CosmosRagOptions>(builder.Configuration.GetSection("CosmosRag"));
+builder.Services.Configure<CosmosOptions>(builder.Configuration.GetSection("CosmosRag"));
 builder.Services.Configure<SqlOptions>(builder.Configuration.GetSection("Sql"));
 builder.Services.Configure<MonthlyReportOptions>(builder.Configuration.GetSection("MonthlyReport"));
 

@@ -24,8 +24,8 @@ Models/
 
 Routing/
   Routing.cs                            IRoutingEngine, RoutingEngine, PolicyOptions, PolicyConfig
-                                        PolicyConfig.QueryBackend ("cosmos" | "mssql")
-                                        IRoutingEngine.GetQueryBackend(request)
+                                        PolicyConfig: PrimaryModel, Fallbacks, ToolsEnabled, RagEnabled, QueryBackend
+                                        IRoutingEngine: ResolveModelChain, IsToolsEnabled, GetQueryBackend, IsRagEnabled
 
 Services/
   QueryService.cs                       IQueryService
@@ -98,7 +98,7 @@ SyncFunction/                           Erillinen Azure Functions -sovellus
   "critical":     { "PrimaryModel": "gpt4" },
   "tools":        { "PrimaryModel": "gpt4", "ToolsEnabled": true, "QueryBackend": "cosmos" },
   "tools_sql":    { "PrimaryModel": "gpt4", "ToolsEnabled": true, "QueryBackend": "mssql" },
-  "rag":          { "PrimaryModel": "gpt4", "ToolsEnabled": true, "RagEnabled": true, "QueryBackend": "cosmos" }
+  "rag":          { "PrimaryModel": "gpt4", "RagEnabled": true, "QueryBackend": "cosmos" }
 },
 "Rag": {
   "DatabaseName": "ragdb",
