@@ -5,12 +5,17 @@ flowchart TD
         MW1[HTTPS Redirection]
         MW2["ApiKeyMiddleware\nX-Api-Key → 401 jos puuttuu"]
         EP["ChatEndpoints\nPOST /api/chat → ChatResponse"]
-        RE["RoutingEngine\nResolveModelChain · IsToolsEnabled\nGetQueryBackend"]
+        RE["RoutingEngine\nResolveModelChain · IsToolsEnabled\nIsRagEnabled · GetQueryBackend"]
         CB["InMemoryCircuitBreaker\nper-model: Closed → Open → Half-Open"]
         OAI["AzureOpenAIClient\nRetry max 2 · Timeout 15 s"]
 
         subgraph SP["Yksinkertainen polku — ToolsEnabled=false"]
             SC["GetChatCompletionAsync\nFallback-ketju mallien välillä"]
+        end
+
+        subgraph RP["RAG-polku — RagEnabled=true"]
+            EMB["GetEmbeddingAsync\nteksti → float32[1536]"]
+            RGS["CosmosRagService\nVectorDistance → top-3 kuukausiraportti"]
         end
 
         subgraph AL["Agenttiloop — ToolsEnabled=true · max 5 kierrosta"]
@@ -22,17 +27,25 @@ flowchart TD
     end
 
     AzOAI[("Azure OpenAI\nGPT-4 · GPT-4o-mini")]
+    AzEMB[("Azure OpenAI\ntext-embedding-3-small")]
     CosmDB[("Cosmos DB\nragdb / documents")]
+    KuuDB[("Cosmos DB\nragdb / kuukausiraportit\nvektori-indeksi")]
     SqlDB[("Azure SQL\ntaulu: mittaukset")]
 
-    Client -->|"POST /api/chat"| MW1architecture.drawio
+    Client -->|"POST /api/chat"| MW1
     MW1 --> MW2
     MW2 -->|"401 Unauthorized"| Client
     MW2 --> EP
     EP --> RE
     RE -->|"ToolsEnabled=false"| SC
-    RE -->|"ToolsEnabled=true"| RC
+    RE -->|"RagEnabled=true"| EMB
+    RE -->|"ToolsEnabled=true\nRagEnabled=false"| RC
     SC --> OAI
+    EMB -->|"HTTP POST"| AzEMB
+    AzEMB -->|"float32[1536]"| RGS
+    RGS -->|"VectorDistance SELECT"| KuuDB
+    KuuDB -->|"top-3 kuvaukset"| RGS
+    RGS -->|"RAG-konteksti + skeema\n→ agenttiloop"| RC
     RC --> OAI
     OAI <-->|"IsOpen · RecordFailure · RecordSuccess"| CB
     OAI -->|"HTTP POST"| AzOAI
@@ -49,13 +62,18 @@ flowchart TD
     SQS -->|"JSON tulokset → loop"| RC
     EP -->|"200 / 503 / 502 / 500"| Client
 
-    style GW fill:#EBF5FB,stroke:#0078d4,stroke-width:2pxarchitecture.drawio
+    style GW fill:#EBF5FB,stroke:#0078d4,stroke-width:2px
     style SP fill:#f0f9ff,stroke:#93c5fd,stroke-dasharray:5 5
+    style RP fill:#faf5ff,stroke:#a855f7,stroke-dasharray:5 5
     style AL fill:#eff6ff,stroke:#3b82f6,stroke-dasharray:5 5
     style CB fill:#fee2e2,stroke:#ef4444,color:#991b1b
     style CQS fill:#dcfce7,stroke:#16a34a
     style SQS fill:#dcfce7,stroke:#16a34a
+    style EMB fill:#f3e8ff,stroke:#a855f7
+    style RGS fill:#f3e8ff,stroke:#a855f7
     style AzOAI fill:#f3f4f6,stroke:#6b7280
+    style AzEMB fill:#f3f4f6,stroke:#6b7280
     style CosmDB fill:#f3f4f6,stroke:#6b7280
+    style KuuDB fill:#f3e8ff,stroke:#a855f7
     style SqlDB fill:#f3f4f6,stroke:#6b7280
     style Client fill:#f3f4f6,stroke:#6b7280

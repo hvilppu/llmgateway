@@ -81,11 +81,13 @@ az ad app federated-credential create --id <APP_ID> --parameters @fedcred.json
 
 **GitHub → Actions → Provision Infrastructure → Run workflow → main**
 
-Tämä ajaa `infra.yml`:n, joka:
-1. Luo resource groupin `rg-llmgateway-prod`
-2. Ajaa `main.bicep` → luo kaiken: App Service, Azure OpenAI + model deploymentit, Cosmos DB, SQL Server, SyncFunction (Storage Account + Consumption Plan + Function App), Log Analytics, App Insights
+Tämä ajaa `infra.yml`:n, joka tekee automaattisesti kolmivaiheisen prosessin:
 
-> Kesto: ~10–15 min (model deploymentit hitaita).
+1. **Bicep-vaihe 1** (`deployVectorContainer=false`) — luo kaiken muun: App Service, Azure OpenAI + model deploymentit (gpt-4o, gpt-4o-mini, text-embedding-3-small), Cosmos DB (capabilities: EnableNoSQLVectorSearch), SQL Server + tietokanta, SyncFunction (Storage Account + Consumption Plan + Function App), Log Analytics, App Insights
+2. **Odotus 180 s** — `EnableNoSQLVectorSearch`-capability tarvitsee aikaa propagoituakseen Cosmos DB -tilille
+3. **Bicep-vaihe 2** (`deployVectorContainer=true`) — luo `kuukausiraportit`-containerin vektori-indeksillä (float32, 1536 dim, cosine, quantizedFlat)
+
+> Kesto: ~20–25 min (model deploymentit + 180 s odotus).
 
 ---
 
@@ -126,7 +128,7 @@ Käynnistää automaattisesti `deploy.yml` (LlmGateway) ja `deploy-function.yml`
 | `infra/main.bicepparam` | Parametrit (ei salaisuuksia) |
 | `.github/workflows/infra.yml` | Infra-deploy — ajetaan manuaalisesti |
 | `.github/workflows/deploy.yml` | LlmGateway-deploy — automaattinen push:lla |
-| `.github/workflows/deploy-function.yml` | SyncFunction-deploy — automaattinen SyncFunction/-muutoksilla |
+| `.github/workflows/deploy-function.yml` | SyncFunction-deploy — triggeröityy vain `SyncFunction/**`-muutoksilla |
 
 ---
 

@@ -226,3 +226,20 @@ Important: I make commits manually DO NOT EVER DO COMMITS
 
 ## Facts and hallucinating
 Use facts NOT hallucinating
+
+## Dokumentaation synkronointi
+
+Kun teet koodimuutoksia, päivitä aina myös alla listatut dokumentit. Tarkista taulukko ennen kuin ilmoitat tehtävän valmiiksi.
+
+| Muutos koodissa | Päivitä nämä tiedostot |
+|-----------------|------------------------|
+| Uusi policy tai olemassaolevan muutos | `CLAUDE.md` (Policyt-osio), `TERMS.md` (Policy-rivi), `architecture.mmd` (reitityssolmu) |
+| Uusi backend tai query-polku | `CLAUDE.md` (Query-backendit), `TERMS.md`, `architecture.mmd` |
+| Uusi service tai rajapinta (`IFoo`, `FooService`) | `CLAUDE.md` (Rakenne + Flow), `TERMS.md` jos uusi käsite, `architecture.mmd` |
+| Uusi endpoint | `CLAUDE.md` (Rakenne), `architecture.mmd` |
+| Muutos resilienssilogiikkaan (retry, CB, timeout) | `CLAUDE.md`, `TERMS.md` (Resilienssiimallit-osio) |
+| Muutos Bicep / infra-tiedostoihin | `INFRA.md` |
+| Muutos appsettings-rakenteeseen | `CLAUDE.md` (Konfiguraatio-osio) |
+| Uusi termi tai konsepti jota ei ole selitetty | `TERMS.md` |
+
+**`architecture.drawio`** — päivitetään harkiten erikseen, ei jokaisen muutoksen yhteydessä. Se on visuaalinen snapshot, ei living document.
