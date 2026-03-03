@@ -42,6 +42,7 @@ Tärkeimmät käsitteet, lyhenteet ja suunnittelumallit tässä projektissa.
 | **TopK** | Vektorihaun palautettavien dokumenttien maksimimäärä (oletuksena 3). Konfiguroidaan `Rag:TopK`-asetuksella. |
 | **Kuukausiraportti** | RAG-indeksin dokumentti: LLM:n generoima sanallinen kuvaus yhden kaupungin yhdestä kuukaudesta, tallennettuna embedding-vektorin kanssa `kuukausiraportit`-containeriin. |
 | **RAG-konteksti** | `IRagService.GetContextAsync` — vektorihaun palauttamat kuukausikuvaukset merkkijonona. Injektoidaan system promptiin ennen agenttilooppia. |
+| **ReportBackfillService** | `IHostedService` SyncFunction-sovelluksessa. Ajaa `GenerateAllMonthsReportsAsync` kerran käynnistyksen yhteydessä — täyttää puuttuvat kuukausiraportit historiadatasta. Kuluvan kuukauden päivityksestä vastaa `CosmosToSqlTrigger`. |
 
 ---
 

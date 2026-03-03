@@ -12,7 +12,7 @@ Endpoints/
                                         Erillinen system prompt ja tool-kuvaus Cosmos DB- ja MS SQL -poluille
 
 Infrastructure/
-  AzureOpenAIClient.cs                  IAzureOpenAIClient + toteutus (retry, circuit breaker, GetRawCompletionAsync)
+  AzureOpenAIClient.cs                  IAzureOpenAIClient + toteutus (retry, circuit breaker, GetRawCompletionAsync, GetEmbeddingAsync)
   AzureOpenAIOptions.cs                 Konfiguraatio-optiot
   CircuitBreaker.cs                     ICircuitBreaker, InMemoryCircuitBreaker, CircuitBreakerOptions
 
@@ -46,6 +46,7 @@ SyncFunction/                           Erillinen Azure Functions -sovellus
     CosmosSyncService.cs                Cosmos DB → MS SQL synkronointi (_ts-vesimerkki, MERGE INTO)
     MigrationService.cs                 IHostedService — SQL-taulujen luonti käynnistyksessä (IF NOT EXISTS)
     MonthlyReportService.cs             Kuukausiraporttien generointi: GPT-4o-mini (kuvaus) + embedding → upsert kuukausiraportit
+                                        ReportBackfillService — IHostedService, ajaa GenerateAllMonthsReportsAsync käynnistyksessä (historiadatan backfill)
 ```
 
 ### Namespacet
@@ -58,6 +59,8 @@ SyncFunction/                           Erillinen Azure Functions -sovellus
 | `Models/` | `LlmGateway.Models` |
 | `Routing/` | `LlmGateway.Routing` |
 | `Services/` | `LlmGateway.Services` |
+| `SyncFunction/` | `SyncFunction` |
+| `SyncFunction/Services/` | `SyncFunction.Services` |
 
 ## Teknologiat
 
@@ -74,6 +77,9 @@ SyncFunction/                           Erillinen Azure Functions -sovellus
 ## Konfiguraatio (appsettings)
 
 ```json
+"ApiKey": {
+  "Key": "YOUR-GATEWAY-API-KEY"
+},
 "AzureOpenAI": {
   "Endpoint": "https://YOUR-RESOURCE-NAME.openai.azure.com/",
   "ApiKey": "...",
@@ -84,13 +90,20 @@ SyncFunction/                           Erillinen Azure Functions -sovellus
   "Deployments": {
     "gpt4": "YOUR-GPT4-DEPLOYMENT-NAME",
     "gpt4oMini": "YOUR-GPT4O-MINI-DEPLOYMENT-NAME"
-  }
+  },
+  "EmbeddingDeployment": "YOUR-EMBEDDING-DEPLOYMENT-NAME"
 },
 "Policies": {
   "chat_default": { "PrimaryModel": "gpt4oMini" },
   "critical":     { "PrimaryModel": "gpt4" },
   "tools":        { "PrimaryModel": "gpt4", "ToolsEnabled": true, "QueryBackend": "cosmos" },
-  "tools_sql":    { "PrimaryModel": "gpt4", "ToolsEnabled": true, "QueryBackend": "mssql" }
+  "tools_sql":    { "PrimaryModel": "gpt4", "ToolsEnabled": true, "QueryBackend": "mssql" },
+  "rag":          { "PrimaryModel": "gpt4", "ToolsEnabled": true, "RagEnabled": true, "QueryBackend": "cosmos" }
+},
+"Rag": {
+  "DatabaseName": "ragdb",
+  "RaportitContainerName": "kuukausiraportit",
+  "TopK": 3
 },
 "CosmosRag": {
   "ConnectionString": "AccountEndpoint=...",
@@ -189,6 +202,9 @@ curl -X POST http://localhost:5079/api/chat -H "Content-Type: application/json" 
 
 # tools_sql policy — MS SQL backend, LLM generoi T-SQL-kyselyn
 curl -X POST http://localhost:5079/api/chat -H "Content-Type: application/json" -H "X-Api-Key: YOUR-API-KEY" -d "{\"message\": \"Mikä oli lämpötilan keskiarvo Helsingissä helmikuussa 2025?\", \"policy\": \"tools_sql\"}"
+
+# rag policy — embedding-haku kuukausiraporteista + Cosmos DB -agenttiloop
+curl -X POST http://localhost:5079/api/chat -H "Content-Type: application/json" -H "X-Api-Key: YOUR-API-KEY" -d "{\"message\": \"Millainen talvi 2024 oli Helsingissä?\", \"policy\": \"rag\"}"
 ```
 
 OpenAPI-schema: `http://localhost:5079/openapi/v1.json`
@@ -230,6 +246,24 @@ OpenAPI-schema: `http://localhost:5079/openapi/v1.json`
 10. Lisätään tool-tulos messages-listaan, loop uudelleen
 11. Azure palauttaa `finish_reason: "stop"` → lopullinen vastaus
 12. Vastaus: `{ "reply": "Helmikuussa 2025 keskilämpötila Helsingissä oli -3.2°C.", ... }`
+
+### RAG-polku (policy: "rag")
+1. POST /api/chat `{ "message": "Millainen talvi 2024 oli Helsingissä?", "policy": "rag" }`
+2. `ChatEndpoints` → `RoutingEngine.ResolveModelChain` → `["gpt4"]`
+3. `IsRagEnabled` → true → RAG-haara (ennen `IsToolsEnabled`-tarkistusta)
+4. `CosmosSchemaProvider.GetSchemaAsync()` → skeema välimuistista tai `SELECT TOP 1 * FROM c`
+5. `AzureOpenAIClient.GetEmbeddingAsync(request.Message)` → `float32[1536]`
+6. `CosmosRagService.GetContextAsync(queryEmbedding)` → VectorDistance-haku `kuukausiraportit`-containerista → top-3 kuvaukset merkkijonona
+7. `BuildRagSystemPrompt(ragContext, schema)` → system prompt RAG-kontekstilla ja skeemalla injektoituna
+8. `HandleWithToolsAsync(... CosmosTools ...)` → agenttiloop Cosmos-työkaluilla
+9. `AzureOpenAIClient.GetRawCompletionAsync(messages, CosmosTools, "gpt4")`
+10a. Azure palauttaa `finish_reason: "stop"` → LLM vastaa RAG-kontekstin pohjalta, ei tarvita DB-kyselyä
+10b. Azure palauttaa `finish_reason: "tool_calls"` → `query_database(sql="SELECT AVG(...)")` → tarkka luku DB:stä → loop jatkuu
+11. Azure palauttaa `finish_reason: "stop"` → lopullinen vastaus
+12. Vastaus: `{ "reply": "Talvi 2024 Helsingissä oli ankea ja kylmä. Tammikuun keskilämpötila oli -6.1°C...", ... }`
+
+**Huom:** RAG-polku käyttää aina `CosmosTools` + `CosmosQueryService` riippumatta `QueryBackend`-arvosta.
+Tarkat luvut haetaan AINA `query_database`-työkalulla — RAG-konteksti on vain sanallista taustaa.
 
 ## Git
 Tärkeää: Teen commitit itse — ÄLÄ KOSKAAN tee committeja automaattisesti
