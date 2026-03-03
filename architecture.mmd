@@ -4,7 +4,7 @@ flowchart TD
     subgraph GW["Azure App Service — LlmGateway (.NET 10)"]
         MW1[HTTPS Redirection]
         MW2["ApiKeyMiddleware\nX-Api-Key → 401 jos puuttuu"]
-        EP["ChatEndpoints\nPOST /api/chat → ChatResponse"]
+        EP["ChatEndpoints\nPOST /api/chat → ChatResponse\nPOST /api/chat/stream → SSE"]
         RE["RoutingEngine\nResolveModelChain · IsToolsEnabled\nIsRagEnabled · GetQueryBackend"]
         CB["InMemoryCircuitBreaker\nper-model: Closed → Open → Half-Open"]
         OAI["AzureOpenAIClient\nRetry max 2 · Timeout 15 s"]
@@ -32,7 +32,7 @@ flowchart TD
     KuuDB[("Cosmos DB\nragdb / kuukausiraportit\nvektori-indeksi")]
     SqlDB[("Azure SQL\ntaulu: mittaukset")]
 
-    Client -->|"POST /api/chat"| MW1
+    Client -->|"POST /api/chat\nPOST /api/chat/stream"| MW1
     MW1 --> MW2
     MW2 -->|"401 Unauthorized"| Client
     MW2 --> EP
@@ -60,7 +60,7 @@ flowchart TD
     SqlDB -->|JSON| SQS
     CQS -->|"JSON tulokset → loop"| RC
     SQS -->|"JSON tulokset → loop"| RC
-    EP -->|"200 / 503 / 502 / 500"| Client
+    EP -->|"200 / 503 / 502 / 500\nSSE text/event-stream"| Client
 
     subgraph SF["Azure Functions — SyncFunction"]
         TRG["CosmosToSqlTrigger\nTimer 15 min"]

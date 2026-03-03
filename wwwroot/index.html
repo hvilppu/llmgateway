@@ -506,27 +506,87 @@
 
         addMessage('user', text);
 
+        // Nollaa typing-indikaattori ja näytä animaatio
+        typingEl.innerHTML = '<span class="dot"></span><span class="dot"></span><span class="dot"></span>';
         typingEl.style.display = 'block';
         chatEl.scrollTop = chatEl.scrollHeight;
 
+        let assistantEl   = null;  // Assistant-viestibubble luodaan ensimmäisen tokenin yhteydessä
+        let assistantText = '';
+
         try {
-            const res = await fetch('/api/chat', {
+            const response = await fetch('/api/chat/stream', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Api-Key': apiKey
-                },
+                headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
                 body: JSON.stringify({ message: text, policy: policyEl.value })
             });
 
-            const data = await res.json();
-
-            if (!res.ok) {
-                addMessage('error', data.detail || data.title || 'Virhe ' + res.status);
-            } else {
-                const meta = data.model + ' · ' + (data.usage?.totalTokens ?? '?') + ' tok';
-                addMessage('assistant', data.reply, meta);
+            if (!response.ok) {
+                const data = await response.json().catch(() => ({}));
+                addMessage('error', data.detail || data.title || 'Virhe ' + response.status);
+                return;
             }
+
+            const reader  = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer    = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+
+                // Käsittele täydet SSE-lohkot (\n\n-erotin)
+                const blocks = buffer.split('\n\n');
+                buffer = blocks.pop();  // Viimeinen lohko voi olla kesken
+
+                for (const block of blocks) {
+                    if (!block.trim()) continue;
+
+                    let eventType = 'message';
+                    let dataStr   = '';
+
+                    for (const line of block.split('\n')) {
+                        if (line.startsWith('event: ')) eventType = line.slice(7).trim();
+                        if (line.startsWith('data: '))  dataStr   = line.slice(6).trim();
+                    }
+
+                    if (!dataStr) continue;
+                    let data;
+                    try { data = JSON.parse(dataStr); } catch { continue; }
+
+                    if (eventType === 'token') {
+                        if (!assistantEl) {
+                            // Ensimmäinen token — piilota typing, luo viestibubble
+                            typingEl.style.display = 'none';
+                            assistantEl = document.createElement('div');
+                            assistantEl.className = 'message assistant';
+                            chatEl.insertBefore(assistantEl, typingEl);
+                        }
+                        assistantText += data.content ?? '';
+                        assistantEl.textContent = assistantText;
+                        chatEl.scrollTop = chatEl.scrollHeight;
+
+                    } else if (eventType === 'status') {
+                        // Näytä vaiheteksti typing-indikaattorissa
+                        typingEl.innerHTML = `<span style="font-size:0.78rem;color:#aaa;padding:2px 0">${data.message ?? ''}</span>`;
+                        typingEl.style.display = 'block';
+
+                    } else if (eventType === 'done') {
+                        if (assistantEl && data.model) {
+                            const meta = document.createElement('div');
+                            meta.className = 'meta';
+                            meta.textContent = data.model + (data.usage?.totalTokens ? ' · ' + data.usage.totalTokens + ' tok' : '');
+                            assistantEl.appendChild(meta);
+                        }
+
+                    } else if (eventType === 'error') {
+                        addMessage('error', data.message ?? 'Virhe');
+                    }
+                }
+            }
+
         } catch {
             addMessage('error', 'Verkkovirhe — tarkista yhteys ja päivitä sivu');
         } finally {

@@ -116,6 +116,7 @@ Tärkeimmät käsitteet, lyhenteet ja suunnittelumallit tässä projektissa.
 | **IHttpClientFactory** | .NET:n suositeltu tapa luoda `HttpClient`-instansseja (hallitsee elinkaaret, välttää socket exhaustion). |
 | **Typed Client** | `IHttpClientFactory`-malli, jossa `HttpClient` injektoidaan suoraan omaan palveluluokkaan (`AzureOpenAIClient`). |
 | **Middleware** | ASP.NET Core -putki, jossa HTTP-pyyntö kulkee ennen endpointia. Tässä projektissa: `ApiKeyMiddleware` (`X-Api-Key`-headerintarkistus). |
+| **SSE** | Server-Sent Events — HTTP-pohjainen yksisuuntainen push-protokolla (`text/event-stream`). `/api/chat/stream` käyttää SSE:tä streaming-vastauksiin. Event-tyypit: `status` (työkalukutsujen tila), `token` (vastausteksti pala palalta), `done` (valmis + metatiedot), `error` (virhe). |
 | **OpenAPI** | REST API:n kuvausstandardi. .NET 10:ssä sisäänrakennettu (`AddOpenApi` / `MapOpenApi`), ei Swashbucklea. |
 | **Structured Logging** | Lokitus avain-arvo-pareina (`Policy=`, `ModelKey=`, `LatencyMs=`, `Backend=`) — helpompi hakea ja suodattaa log-järjestelmistä. |
 

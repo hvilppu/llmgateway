@@ -8,11 +8,12 @@ ASP.NET Core (.NET 10) minimal API gateway Azure OpenAI -palvelulle. Tukee sekä
 Program.cs                              DI-rekisteröinnit, middleware-pipeline
 
 Endpoints/
-  ChatEndpoints.cs                      POST /api/chat endpoint — yksinkertainen + agenttiloop (function calling)
+  ChatEndpoints.cs                      POST /api/chat         — yksinkertainen + agenttiloop (function calling)
+                                        POST /api/chat/stream  — SSE-streaming, event-tyypit: status / token / done / error
                                         Erillinen system prompt ja tool-kuvaus Cosmos DB- ja MS SQL -poluille
 
 Infrastructure/
-  AzureOpenAIClient.cs                  IAzureOpenAIClient + toteutus (retry, circuit breaker, GetRawCompletionAsync, GetEmbeddingAsync)
+  AzureOpenAIClient.cs                  IAzureOpenAIClient + toteutus (retry, circuit breaker, GetRawCompletionAsync, GetEmbeddingAsync, GetStreamingCompletionAsync)
   AzureOpenAIOptions.cs                 Konfiguraatio-optiot
   CircuitBreaker.cs                     ICircuitBreaker, InMemoryCircuitBreaker, CircuitBreakerOptions
 

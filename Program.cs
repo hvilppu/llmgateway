@@ -99,5 +99,6 @@ app.UseHttpsRedirection();
 app.UseMiddleware<ApiKeyMiddleware>();
 
 app.MapChatEndpoints();
+app.MapChatStreamEndpoints();
 
 app.Run();

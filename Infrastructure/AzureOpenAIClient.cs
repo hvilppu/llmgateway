@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using LlmGateway.Models;
@@ -23,6 +24,15 @@ public interface IAzureOpenAIClient
         IReadOnlyList<object> messages,
         IReadOnlyList<object>? tools,
         string modelKey,
+        CancellationToken cancellationToken = default);
+
+    // Streaming chat completion — palauttaa sisältödeltoja (tokenit) asynkronisena virtana.
+    // Käyttää Azure OpenAI stream=true -tilaa. Ei sisällä retry-logiikkaa.
+    IAsyncEnumerable<string> GetStreamingCompletionAsync(
+        ChatRequest request,
+        string requestId,
+        string modelKey,
+        string? systemPrompt = null,
         CancellationToken cancellationToken = default);
 }
 
@@ -362,5 +372,95 @@ public class AzureOpenAIClient : IAzureOpenAIClient
     private static bool IsTransientException(Exception ex)
     {
         return ex is TaskCanceledException; // voidaan laajentaa esim. SocketExceptioniin jne.
+    }
+
+    // Streaming chat completion — lukee Azure OpenAI:n SSE-virtaa ja palauttaa sisältödeltoja.
+    // Ei retry-logiikkaa: streaming ei tue osittaista uudelleenyritystä.
+    public async IAsyncEnumerable<string> GetStreamingCompletionAsync(
+        ChatRequest request,
+        string requestId,
+        string modelKey,
+        string? systemPrompt = null,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        if (!_options.Deployments.TryGetValue(modelKey, out var deploymentName))
+            throw new InvalidOperationException($"Unknown modelKey '{modelKey}' for AzureOpenAI");
+
+        if (_circuitBreaker.IsOpen(modelKey))
+            throw new CircuitBreakerOpenException(modelKey);
+
+        var url = $"/openai/deployments/{deploymentName}/chat/completions?api-version={_options.ApiVersion}";
+
+        var messages = systemPrompt is not null
+            ? new object[] { new { role = "system", content = systemPrompt }, new { role = "user", content = request.Message } }
+            : new object[] { new { role = "user", content = request.Message } };
+
+        var payload = new { messages, temperature = 0.2, max_tokens = 512, stream = true };
+        var json = JsonSerializer.Serialize(payload, JsonOptions);
+        var httpContent = new StringContent(json, Encoding.UTF8, "application/json");
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(_options.TimeoutMs);
+
+        HttpResponseMessage? httpResponse = null;
+        Stream? responseStream = null;
+        StreamReader? reader = null;
+
+        try
+        {
+            try
+            {
+                httpResponse = await _httpClient.PostAsync(url, httpContent, cts.Token);
+            }
+            catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                _circuitBreaker.RecordFailure(modelKey);
+                throw new HttpRequestException("Azure OpenAI streaming request timed out", ex);
+            }
+
+            if (!httpResponse.IsSuccessStatusCode)
+            {
+                _circuitBreaker.RecordFailure(modelKey);
+                throw new HttpRequestException(
+                    $"Azure OpenAI error: {(int)httpResponse.StatusCode} {httpResponse.ReasonPhrase}");
+            }
+
+            _circuitBreaker.RecordSuccess(modelKey);
+            _logger.LogInformation("Streaming aloitettu. ModelKey={ModelKey}", modelKey);
+
+            responseStream = await httpResponse.Content.ReadAsStreamAsync(cancellationToken);
+            reader = new StreamReader(responseStream, Encoding.UTF8);
+
+            while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
+            {
+                var line = await reader.ReadLineAsync(cancellationToken);
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                if (!line.StartsWith("data: ")) continue;
+
+                var data = line["data: ".Length..];
+                if (data == "[DONE]") break;
+
+                string? delta = null;
+                try
+                {
+                    using var doc = JsonDocument.Parse(data);
+                    var choices = doc.RootElement.GetProperty("choices");
+                    if (choices.GetArrayLength() == 0) continue;
+                    var deltaEl = choices[0].GetProperty("delta");
+                    if (deltaEl.TryGetProperty("content", out var c) && c.ValueKind == JsonValueKind.String)
+                        delta = c.GetString();
+                }
+                catch (JsonException) { continue; }
+
+                if (!string.IsNullOrEmpty(delta))
+                    yield return delta;
+            }
+        }
+        finally
+        {
+            reader?.Dispose();
+            responseStream?.Dispose();
+            httpResponse?.Dispose();
+        }
     }
 }

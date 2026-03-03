@@ -449,4 +449,224 @@ public static class ChatEndpoints
             _ => throw new InvalidOperationException($"Unknown tool: {tc.Function.Name}")
         };
     }
+
+    // --- Streaming endpoint (SSE) ---
+
+    // POST /api/chat/stream — Server-Sent Events, text/event-stream.
+    // Tapahtumatyypit: "status" (välivaihe), "token" (sisältödelta), "done" (valmis), "error" (virhe).
+    public static void MapChatStreamEndpoints(this WebApplication app)
+    {
+        app.MapPost("/api/chat/stream", async (
+            ChatRequest request,
+            IAzureOpenAIClient client,
+            IRoutingEngine routingEngine,
+            IRagService ragService,
+            [FromKeyedServices("cosmos")] IQueryService cosmosQueryService,
+            [FromKeyedServices("mssql")]  IQueryService sqlQueryService,
+            [FromKeyedServices("cosmos")] ISchemaProvider cosmosSchemaProvider,
+            [FromKeyedServices("mssql")]  ISchemaProvider sqlSchemaProvider,
+            ILoggerFactory loggerFactory,
+            HttpContext httpContext,
+            CancellationToken cancellationToken) =>
+        {
+            var logger    = loggerFactory.CreateLogger("LlmGateway.ChatStreamEndpoint");
+            var requestId = httpContext.TraceIdentifier;
+
+            // SSE-headerit asetetaan ennen kirjoittamista
+            httpContext.Response.ContentType = "text/event-stream; charset=utf-8";
+            httpContext.Response.Headers["Cache-Control"]      = "no-cache";
+            httpContext.Response.Headers["X-Accel-Buffering"] = "no";
+
+            if (string.IsNullOrWhiteSpace(request.Message))
+            {
+                await WriteEventAsync(httpContext.Response, "error", new { message = "Message cannot be empty" }, cancellationToken);
+                return;
+            }
+
+            if (request.Message.Length > 4_000)
+            {
+                await WriteEventAsync(httpContext.Response, "error", new { message = "Message too long (max 4000)" }, cancellationToken);
+                return;
+            }
+
+            logger.LogInformation("Streaming request. Policy={Policy}", request.Policy ?? "chat_default");
+
+            try
+            {
+                var modelChain = routingEngine.ResolveModelChain(request);
+
+                if (routingEngine.IsRagEnabled(request))
+                {
+                    var schema = await cosmosSchemaProvider.GetSchemaAsync(cancellationToken);
+                    await WriteEventAsync(httpContext.Response, "status", new { message = "Haetaan semanttinen konteksti..." }, cancellationToken);
+                    var queryEmbedding = await client.GetEmbeddingAsync(request.Message, cancellationToken);
+                    var ragContext      = await ragService.GetContextAsync(queryEmbedding, cancellationToken);
+                    var systemPrompt   = BuildRagSystemPrompt(ragContext, schema);
+
+                    await RunAgentLoopStreamAsync(
+                        request, requestId, modelChain[0], client,
+                        cosmosQueryService, CosmosTools, systemPrompt,
+                        httpContext.Response, logger, cancellationToken);
+                }
+                else if (routingEngine.IsToolsEnabled(request))
+                {
+                    var backend        = routingEngine.GetQueryBackend(request);
+                    var queryService   = backend == "mssql" ? sqlQueryService   : cosmosQueryService;
+                    var schemaProvider = backend == "mssql" ? sqlSchemaProvider : cosmosSchemaProvider;
+                    var tools          = backend == "mssql" ? SqlTools          : CosmosTools;
+                    var schema         = await schemaProvider.GetSchemaAsync(cancellationToken);
+                    var systemPrompt   = backend == "mssql"
+                        ? BuildSqlSystemPrompt(schema)
+                        : BuildCosmosSystemPrompt(schema);
+
+                    await RunAgentLoopStreamAsync(
+                        request, requestId, modelChain[0], client,
+                        queryService, tools, systemPrompt,
+                        httpContext.Response, logger, cancellationToken);
+                }
+                else
+                {
+                    await HandleSimpleStreamAsync(
+                        request, requestId, modelChain, client,
+                        httpContext.Response, logger, cancellationToken);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Streaming endpoint error");
+                try { await WriteEventAsync(httpContext.Response, "error", new { message = "Unexpected error occurred" }, cancellationToken); }
+                catch { /* vastaus voi olla jo suljettu */ }
+            }
+        })
+        .WithName("ChatCompletionStream");
+    }
+
+    // Yksinkertainen polku: streamaa Azure OpenAI:n SSE-vastauksen suoraan asiakkaalle.
+    // Kokeilee modelChain-järjestyksessä — siirtyy seuraavaan malliin circuit breakerin tai HTTP-virheen sattuessa.
+    private static async Task HandleSimpleStreamAsync(
+        ChatRequest request,
+        string requestId,
+        IReadOnlyList<string> modelChain,
+        IAzureOpenAIClient client,
+        HttpResponse response,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        foreach (var modelKey in modelChain)
+        {
+            try
+            {
+                await foreach (var delta in client.GetStreamingCompletionAsync(
+                    request, requestId, modelKey, SimpleSystemPrompt, cancellationToken))
+                {
+                    await WriteEventAsync(response, "token", new { content = delta }, cancellationToken);
+                }
+
+                await WriteEventAsync(response, "done", new { requestId }, cancellationToken);
+                logger.LogInformation("Streaming valmis. ModelKey={ModelKey}", modelKey);
+                return;
+            }
+            catch (CircuitBreakerOpenException ex)
+            {
+                logger.LogWarning(ex, "Circuit breaker auki. ModelKey={ModelKey}", ex.ModelKey);
+            }
+            catch (HttpRequestException ex)
+            {
+                logger.LogWarning(ex, "Streaming-malli epäonnistui. ModelKey={ModelKey}", modelKey);
+            }
+        }
+
+        await WriteEventAsync(response, "error", new { message = "Service temporarily unavailable" }, cancellationToken);
+    }
+
+    // Agenttiloop-polku: lähettää status-eventit tool-kutsujen aikana,
+    // lopuksi streamaa lopullisen vastauksen sana kerrallaan.
+    private static async Task RunAgentLoopStreamAsync(
+        ChatRequest request,
+        string requestId,
+        string modelKey,
+        IAzureOpenAIClient client,
+        IQueryService queryService,
+        object[] tools,
+        string systemPrompt,
+        HttpResponse response,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        var messages = new List<object>
+        {
+            new { role = "system", content = systemPrompt },
+            new { role = "user",   content = request.Message }
+        };
+
+        for (int iteration = 0; iteration < MaxToolIterations; iteration++)
+        {
+            var raw = await client.GetRawCompletionAsync(messages, tools, modelKey, cancellationToken);
+
+            if (raw.FinishReason == "stop")
+            {
+                // Streamaa lopullinen vastaus sana kerrallaan
+                var words = (raw.Content ?? string.Empty).Split(' ');
+                for (int i = 0; i < words.Length; i++)
+                {
+                    var chunk = i < words.Length - 1 ? words[i] + " " : words[i];
+                    await WriteEventAsync(response, "token", new { content = chunk }, cancellationToken);
+                }
+
+                await WriteEventAsync(response, "done", new
+                {
+                    requestId,
+                    model = raw.Model,
+                    usage = raw.Usage != null ? new
+                    {
+                        promptTokens     = raw.Usage.Prompt_tokens,
+                        completionTokens = raw.Usage.Completion_tokens,
+                        totalTokens      = raw.Usage.Total_tokens
+                    } : null
+                }, cancellationToken);
+
+                logger.LogInformation("Stream agenttiloop valmis. Iteraatiot={Iterations}", iteration + 1);
+                return;
+            }
+
+            if (raw.FinishReason == "tool_calls" && raw.ToolCalls is { Count: > 0 })
+            {
+                messages.Add(new { role = "assistant", content = raw.Content, tool_calls = raw.ToolCalls });
+
+                foreach (var tc in raw.ToolCalls)
+                {
+                    await WriteEventAsync(response, "status", new { message = "Suoritetaan tietokantakysely..." }, cancellationToken);
+
+                    string toolResult;
+                    try
+                    {
+                        toolResult = await ExecuteToolAsync(tc, queryService, logger, cancellationToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogWarning(ex, "Tool {ToolName} epäonnistui", tc.Function.Name);
+                        toolResult = $"Tool execution error: {ex.Message}";
+                    }
+
+                    messages.Add(new { role = "tool", tool_call_id = tc.Id, content = toolResult });
+                }
+
+                continue;
+            }
+
+            logger.LogWarning("Tuntematon finish_reason={FinishReason}, lopetetaan silmukka", raw.FinishReason);
+            break;
+        }
+
+        await WriteEventAsync(response, "error", new { message = "Agent loop exceeded maximum iterations" }, cancellationToken);
+    }
+
+    // Kirjoittaa SSE-tapahtuman vastaukseen ja tyhjentää puskurin välittömästi.
+    private static async Task WriteEventAsync(
+        HttpResponse response, string eventType, object data, CancellationToken cancellationToken)
+    {
+        var json = JsonSerializer.Serialize(data, JsonOpts);
+        await response.WriteAsync($"event: {eventType}\ndata: {json}\n\n", cancellationToken);
+        await response.Body.FlushAsync(cancellationToken);
+    }
 }
