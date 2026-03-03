@@ -140,4 +140,4 @@ Tarkempi ohje löytyy [INFRA.md](INFRA.md)-dokumentista.
 | [README.md](README.md) | Policyit, testauskomennot |
 | [FAQ.md](FAQ.md) | Tekniset kysymykset: virhetilanteet, tietoturva, kustannukset |
 | [INFRA.md](INFRA.md) | Azure-infrastruktuuri ja käyttöönotto |
-| [Terms.md](Terms.md) | Termistö ja käsitteet |
+| [TERMS.md](TERMS.md) | Termistö ja käsitteet |
