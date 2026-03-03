@@ -36,6 +36,16 @@ Services/
   SchemaService.cs                      ISchemaProvider
                                         CosmosSchemaProvider — skeema näytedokumentista (TOP 1), 60 min välimuisti
                                         SqlSchemaProvider    — skeema INFORMATION_SCHEMA.COLUMNS, 60 min välimuisti
+  RagService.cs                         IRagService, CosmosRagService, RagOptions
+                                        VectorDistance-haku kuukausiraportit-containerista, TopK=3
+
+SyncFunction/                           Erillinen Azure Functions -sovellus
+  Program.cs                            DI-rekisteröinnit, hosted services
+  CosmosToSqlTrigger.cs                 Timer trigger (15 min) — kutsuu CosmosSyncService + MonthlyReportService
+  Services/
+    CosmosSyncService.cs                Cosmos DB → MS SQL synkronointi (_ts-vesimerkki, MERGE INTO)
+    MigrationService.cs                 IHostedService — SQL-taulujen luonti käynnistyksessä (IF NOT EXISTS)
+    MonthlyReportService.cs             Kuukausiraporttien generointi: GPT-4o-mini (kuvaus) + embedding → upsert kuukausiraportit
 ```
 
 ### Namespacet
@@ -222,10 +232,25 @@ OpenAPI-schema: `http://localhost:5079/openapi/v1.json`
 12. Vastaus: `{ "reply": "Helmikuussa 2025 keskilämpötila Helsingissä oli -3.2°C.", ... }`
 
 ## Git
-Important: I make commits manually DO NOT EVER DO COMMITS
+Tärkeää: Teen commitit itse — ÄLÄ KOSKAAN tee committeja automaattisesti
 
-## Facts and hallucinating
-Use facts NOT hallucinating
+## Faktat ja hallusinointi
+Käytä faktoja — älä hallusinoi
+
+## Dokumentaatiotiedostot
+
+| Tiedosto | Sisältö — milloin luet / päivität |
+|----------|-----------------------------------|
+| `CLAUDE.md` | Arkkitehtuuri, rakenne, konfiguraatio, flow — projektin pääohje Claudelle |
+| `TERMS.md` | Termit ja käsitteet — päivitä kun lisäät uuden konseptin tai komponentin |
+| `INFRA.md` | Azure-infran käyttöönotto-ohjeet — päivitä kun Bicep tai workflow muuttuu |
+| `INTRO.md` | Yleiskuvaus projektista — harvoin muuttuu |
+| `ERRORS.md` | Tunnetut virheet ja niiden ratkaisut |
+| `PROBLEMS.md` | Avoimet ongelmat ja rajoitukset |
+| `RAG.md` | RAG-arkkitehtuurin kuvaus ja ohjeet |
+| `FAQ.md` | Usein kysytyt kysymykset |
+| `architecture.mmd` | Mermaid-kaavio — päivitä kun arkkitehtuuri muuttuu (tekstipohjainen, helppo) |
+| `architecture.drawio` | Visuaalinen draw.io-kaavio — päivitetään harkiten, ei jokaisen muutoksen yhteydessä |
 
 ## Dokumentaation synkronointi
 

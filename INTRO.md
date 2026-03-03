@@ -57,6 +57,7 @@ Gateway valitsee automaattisesti sopivimman lähestymistavan kysymyksen perustee
 |---------|---------------|-----------|
 | Tarkka luku tai laskutulos | Haku tietokannasta SQL:llä | "Mikä oli keskilämpötila helmikuussa?" |
 | Selitys tai konteksti | LLM vastaa suoraan | "Miksi talvi on kylmä?" |
+| Sanallinen kuvaus kauden tunnelmasta | RAG-haku kuukausiraporteista | "Millainen talvi 2024 oli Helsingissä?" |
 
 Sama tekstikenttä — eri vastausstrategia konepellin alla.
 
@@ -141,3 +142,4 @@ Tarkempi ohje löytyy [INFRA.md](INFRA.md)-dokumentista.
 | [FAQ.md](FAQ.md) | Tekniset kysymykset: virhetilanteet, tietoturva, kustannukset |
 | [INFRA.md](INFRA.md) | Azure-infrastruktuuri ja käyttöönotto |
 | [TERMS.md](TERMS.md) | Termistö ja käsitteet |
+| [RAG.md](RAG.md) | RAG-arkkitehtuuri: kuukausiraportit, vektorihaku, SyncFunction |
