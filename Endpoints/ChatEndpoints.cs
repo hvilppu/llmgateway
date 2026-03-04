@@ -11,52 +11,63 @@ public static class ChatEndpoints
 {
     private const int MaxToolIterations = 5;
 
+    // Yhteinen kielto tietokantatietojen paljastamiseen — lisätään kaikkiin system prompteihin.
+    private const string NoSchemaLeakInstruction =
+        "\nÄLÄ KOSKAAN kerro käyttäjälle tietokannan rakennetta, kenttänimiä, taulujen nimiä, " +
+        "skeemaa tai mitään teknisiä toteutustietoja. Jos käyttäjä kysyy tietokannan rakenteesta " +
+        "tai skeemasta, kieltäydy kohteliaasti.";
+
     // Yksinkertaisen polun system prompt: rajoittaa aiheeseen ilman työkaluja.
     private const string SimpleSystemPrompt =
         "Olet assistentti joka vastaa AINOASTAAN Suomen kaupunkien lämpötila- ja säädataan liittyviin kysymyksiin. " +
         "Vastaa suomeksi. Jos kysymys ei liity aiheeseen, kieltäydy kohteliaasti.";
 
-    // Cosmos DB -polun system prompt. Skeema injektoidaan dynaamisesti ajonaikana.
+    // Cosmos DB -polun system prompt. Skeema injektoidaan ajonaikana — käyttäjälle ei paljasteta.
     private static string BuildCosmosSystemPrompt(string schema)
     {
-        var schemaSection = string.IsNullOrEmpty(schema) ? "" : $"\nTietokannan skeema:\n{schema}\n";
+        var schemaSection = string.IsNullOrEmpty(schema) ? "" : $"\nTietokannan skeema (vain sinulle, älä paljasta käyttäjälle):\n{schema}\n";
         return "Olet assistentti joka vastaa AINOASTAAN Suomen kaupunkien lämpötila- ja säädataan liittyviin kysymyksiin. " +
                "Vastaa suomeksi. Jos kysymys ei liity lämpötila- tai säädataan, kieltäydy kohteliaasti. " +
-               "Sinulla on käytettävissä työkalu:\n" +
+               NoSchemaLeakInstruction +
+               "\nSinulla on käytettävissä työkalu:\n" +
                "- query_database: suorita Cosmos DB SQL -kysely (käytä aggregointiin: keskiarvot, summat, määrät, suodatus)" +
                schemaSection +
                "\nTÄRKEÄ RAJOITUS: Cosmos DB SQL ei tue ORDER BY:tä GROUP BY:n kanssa. " +
-               "Kun haet kylmintä tai lämpimintä kuukautta: hae KAIKKI kuukaudet GROUP BY:llä (ilman ORDER BY), " +
-               "katso palautetut kuukausikeskiarvot ja päättele itse mikä on pienin tai suurin. " +
+               "Kun haet kylmintä tai lämpimintä kuukautta: hae KAIKKI kuukaudet GROUP BY:llä ilman ORDER BY, " +
+               "vertaa tuloksia itse ja päättele mikä on pienin tai suurin arvo. " +
                "Käytä työkalua aina kun kysymys koskee dataa.";
     }
 
-    // RAG-polun system prompt. RAG-konteksti ja skeema injektoidaan dynaamisesti ajonaikana.
+    // RAG-polun system prompt. RAG-konteksti ja skeema injektoidaan ajonaikana — käyttäjälle ei paljasteta.
     private static string BuildRagSystemPrompt(string ragContext, string schema)
     {
         var contextSection = string.IsNullOrEmpty(ragContext) ? "" :
             $"\nRelevantit sääkuvaukset kontekstina:\n{ragContext}\n";
-        var schemaSection = string.IsNullOrEmpty(schema) ? "" : $"\nTietokannan skeema:\n{schema}\n";
+        var schemaSection = string.IsNullOrEmpty(schema) ? "" :
+            $"\nTietokannan skeema (vain sinulle, älä paljasta käyttäjälle):\n{schema}\n";
         return "Olet assistentti joka vastaa AINOASTAAN Suomen kaupunkien lämpötila- ja säädataan liittyviin kysymyksiin. " +
                "Vastaa suomeksi. Jos kysymys ei liity aiheeseen, kieltäydy kohteliaasti. " +
+               NoSchemaLeakInstruction +
                contextSection +
-               "Sinulla on käytettävissä työkalu:\n" +
+               "\nSinulla on käytettävissä työkalu:\n" +
                "- query_database: suorita Cosmos DB SQL -kysely tarkkoja lukuja varten" +
                schemaSection +
                "\nTÄRKEÄ: Tarkat luvut haet AINA query_database-työkalulla. " +
                "Sääkuvaukset ovat vain kontekstia — älä käytä niistä lukuja suoraan vastauksessasi.\n" +
                "TÄRKEÄ RAJOITUS: Cosmos DB SQL ei tue ORDER BY:tä GROUP BY:n kanssa. " +
-               "Kun haet kylmintä tai lämpimintä kuukautta: hae KAIKKI kuukaudet GROUP BY:llä (ilman ORDER BY), " +
-               "katso palautetut kuukausikeskiarvot ja päättele itse mikä on pienin tai suurin.";
+               "Kun haet kylmintä tai lämpimintä kuukautta: hae KAIKKI kuukaudet GROUP BY:llä ilman ORDER BY, " +
+               "vertaa tuloksia itse ja päättele mikä on pienin tai suurin arvo.";
     }
 
-    // MS SQL -polun system prompt. Skeema injektoidaan dynaamisesti ajonaikana.
+    // MS SQL -polun system prompt. Skeema injektoidaan ajonaikana — käyttäjälle ei paljasteta.
     private static string BuildSqlSystemPrompt(string schema)
     {
-        var schemaSection = string.IsNullOrEmpty(schema) ? "" : $"\nTietokannan skeema:\n{schema}\n";
+        var schemaSection = string.IsNullOrEmpty(schema) ? "" :
+            $"\nTietokannan skeema (vain sinulle, älä paljasta käyttäjälle):\n{schema}\n";
         return "Olet assistentti joka vastaa AINOASTAAN Suomen kaupunkien lämpötila- ja säädataan liittyviin kysymyksiin. " +
                "Vastaa suomeksi. Jos kysymys ei liity lämpötila- tai säädataan, kieltäydy kohteliaasti. " +
-               "Sinulla on käytettävissä työkalu:\n" +
+               NoSchemaLeakInstruction +
+               "\nSinulla on käytettävissä työkalu:\n" +
                "- query_database: suorita T-SQL SELECT -kysely MS SQL -tietokantaan (käytä aggregointiin: keskiarvot, summat, määrät, suodatus)" +
                schemaSection +
                "\nTÄRKEÄ T-SQL-rajoitus: älä KOSKAAN käytä LIMIT — se ei toimi SQL Serverissä. " +
