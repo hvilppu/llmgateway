@@ -67,6 +67,7 @@ flowchart TD
         CSS["CosmosSyncService\nCosmos → MS SQL (MERGE INTO)"]
         MRS["MonthlyReportService\nGPT-4o-mini kuvaus + embedding\n→ kuukausiraportit"]
         RBS["ReportBackfillService\nIHostedService — historiadatan backfill käynnistyksessä"]
+        MGS["MigrationService\nIHostedService — SQL-taulujen luonti käynnistyksessä"]
     end
 
     TRG --> CSS
@@ -99,3 +100,4 @@ flowchart TD
     style CSS fill:#fef3c7,stroke:#d97706
     style MRS fill:#fef3c7,stroke:#d97706
     style RBS fill:#fef3c7,stroke:#d97706
+    style MGS fill:#fef3c7,stroke:#d97706

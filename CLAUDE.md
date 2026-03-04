@@ -10,10 +10,13 @@ Program.cs                              DI-rekisteröinnit, middleware-pipeline
 Endpoints/
   ChatEndpoints.cs                      POST /api/chat         — yksinkertainen + agenttiloop (function calling)
                                         POST /api/chat/stream  — SSE-streaming, event-tyypit: status / token / done / error
-                                        Erillinen system prompt ja tool-kuvaus Cosmos DB- ja MS SQL -poluille
+                                        System promptit: SimpleSystemPrompt (const), BuildCosmosSystemPrompt(schema),
+                                        BuildSqlSystemPrompt(schema), BuildRagSystemPrompt(ragContext, schema)
+                                        Tool-kuvaukset: CosmosQueryDatabaseTool, SqlQueryDatabaseTool
 
 Infrastructure/
-  AzureOpenAIClient.cs                  IAzureOpenAIClient + toteutus (retry, circuit breaker, GetRawCompletionAsync, GetEmbeddingAsync, GetStreamingCompletionAsync)
+  AzureOpenAIClient.cs                  IAzureOpenAIClient + toteutus (retry, circuit breaker)
+                                        GetChatCompletionAsync, GetRawCompletionAsync, GetEmbeddingAsync, GetStreamingCompletionAsync
   AzureOpenAIOptions.cs                 Konfiguraatio-optiot
   CircuitBreaker.cs                     ICircuitBreaker, InMemoryCircuitBreaker, CircuitBreakerOptions
 
@@ -26,14 +29,16 @@ Models/
 Routing/
   Routing.cs                            IRoutingEngine, RoutingEngine, PolicyOptions, PolicyConfig
                                         PolicyConfig: PrimaryModel, Fallbacks, ToolsEnabled, RagEnabled, QueryBackend
-                                        IRoutingEngine: ResolveModelChain, IsToolsEnabled, GetQueryBackend, IsRagEnabled
+                                        IRoutingEngine: ResolveModelKey, ResolveModelChain, IsToolsEnabled, GetQueryBackend, IsRagEnabled
 
 Services/
   QueryService.cs                       IQueryService
-                                        CosmosQueryService — Cosmos DB NoSQL SELECT -kyselyt
+                                        CosmosQueryService — Cosmos DB NoSQL SELECT -kyselyt (StartsWith-tarkistus)
                                         SqlQueryService    — MS SQL / Azure SQL T-SQL SELECT -kyselyt
-                                        CosmosOptions      — Cosmos DB -yhteysasetukset
-                                        SqlOptions         — MS SQL -yhteysasetukset
+                                          AST-pohjainen validointi (TSql160Parser): vain yksi SELECT-lause,
+                                          ei sys-skeemaa (BlockedSchemaVisitor), ei OPENROWSET/OPENQUERY
+                                        CosmosOptions      — Cosmos DB -yhteysasetukset (MaxRows: 500)
+                                        SqlOptions         — MS SQL -yhteysasetukset (MaxRows: 500)
   SchemaService.cs                      ISchemaProvider
                                         CosmosSchemaProvider — skeema näytedokumentista (TOP 1), 60 min välimuisti
                                         SqlSchemaProvider    — skeema INFORMATION_SCHEMA.COLUMNS, 60 min välimuisti
@@ -109,10 +114,12 @@ SyncFunction/                           Erillinen Azure Functions -sovellus
 "CosmosRag": {
   "ConnectionString": "AccountEndpoint=...",
   "DatabaseName": "ragdb",
-  "ContainerName": "documents"
+  "ContainerName": "documents",
+  "MaxRows": 500
 },
 "Sql": {
-  "ConnectionString": "Server=...;Database=...;..."
+  "ConnectionString": "Server=...;Database=...;...",
+  "MaxRows": 500
 },
 "CircuitBreaker": {
   "FailureThreshold": 5,
@@ -124,9 +131,10 @@ SyncFunction/                           Erillinen Azure Functions -sovellus
 
 `ChatRequest.Policy` määrittää käytettävän mallin, toimintatavan ja query-backendin:
 - `null` / puuttuu → `chat_default` → `gpt4oMini`, yksinkertainen kutsu
-- `"critical"` → `gpt4`, yksinkertainen kutsu fallback-ketjulla
+- `"critical"` → `gpt4`, yksinkertainen kutsu (ei fallback-ketjua konfigissa)
 - `"tools"` → `gpt4`, function calling -agenttiloop, Cosmos DB -backend
 - `"tools_sql"` → `gpt4`, function calling -agenttiloop, MS SQL -backend
+- `"rag"` → `gpt4`, embedding-haku → RAG-konteksti → agenttiloop Cosmos DB -työkaluilla
 
 `RoutingEngine.ResolveModelChain` palauttaa [primary, fallback1, ...] -listan.
 `RoutingEngine.IsToolsEnabled` kertoo aktivoiko policy agenttilooppin.
@@ -271,6 +279,9 @@ Tärkeää: Teen commitit itse — ÄLÄ KOSKAAN tee committeja automaattisesti
 
 ## Faktat ja hallusinointi
 Käytä faktoja — älä hallusinoi
+
+## Virheet ja warningit
+Korjaa aina virheet ja warningit koodista
 
 ## Dokumentaatiotiedostot
 

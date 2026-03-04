@@ -54,7 +54,8 @@ Tärkeimmät käsitteet, lyhenteet ja suunnittelumallit tässä projektissa.
 | **MS SQL / Azure SQL** | Microsoftin relaatiotietokanta. Vaihtoehtoinen backend mittausdatalle (`tools_sql`-policy). |
 | **NoSQL (Cosmos DB SQL)** | Cosmos DB:n oma SQL-murre. Syntaksi muistuttaa SQL:ää mutta tukee vain osaa ominaisuuksista: `GROUP BY` + `ORDER BY` ei toimi yhdessä, ei `MONTH()`/`YEAR()`-funktioita. |
 | **T-SQL** | Transact-SQL — Microsoft SQL Serverin SQL-murre. Käytä `TOP N` eikä `LIMIT`, tukee `MONTH()`/`YEAR()` ja `ORDER BY` + `GROUP BY` yhdistettynä. |
-| **IQueryService** | Yhteinen rajapinta molemmille query-backendeille. Toteutukset: `CosmosQueryService` (keyed: `"cosmos"`) ja `SqlQueryService` (keyed: `"mssql"`). Vain SELECT-kyselyt sallittu. |
+| **IQueryService** | Yhteinen rajapinta molemmille query-backendeille. Toteutukset: `CosmosQueryService` (keyed: `"cosmos"`) ja `SqlQueryService` (keyed: `"mssql"`). Vain SELECT-kyselyt sallittu. `CosmosQueryService` tarkistaa `StartsWith("SELECT")`; `SqlQueryService` käyttää AST-pohjaista validointia (`TSql160Parser`, `BlockedSchemaVisitor`) — estää myös sys-skeeman, OPENROWSET:n ja OPENQUERY:n. |
+| **MaxRows** | `CosmosOptions.MaxRows` ja `SqlOptions.MaxRows` (oletuksena 500). Rajoittaa yhdestä `query_database`-kutsusta palautettavien rivien enimmäismäärän — estää liian suurten tulosjoukkojen palautuksen LLM:lle. |
 | **ISchemaProvider** | Rajapinta dynaamista skeemahakua varten. Cosmos: `SELECT TOP 1 * FROM c` → JSON-polut pistenotaatiolla. MS SQL: `INFORMATION_SCHEMA.COLUMNS`. Välimuisti 60 min. |
 | **Skeemahaku** | Tietokannan rakenne haetaan ajonaikana ja injektoidaan system promptiin, jotta LLM osaa generoida oikean syntaksin. Epäonnistuessa prompt rakentuu ilman skeemaa — pyyntö ei kaadu. |
 

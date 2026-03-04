@@ -431,9 +431,10 @@ public class AzureOpenAIClient : IAzureOpenAIClient
             responseStream = await httpResponse.Content.ReadAsStreamAsync(cancellationToken);
             reader = new StreamReader(responseStream, Encoding.UTF8);
 
-            while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
+            while (!cancellationToken.IsCancellationRequested)
             {
                 var line = await reader.ReadLineAsync(cancellationToken);
+                if (line == null) break;
                 if (string.IsNullOrWhiteSpace(line)) continue;
                 if (!line.StartsWith("data: ")) continue;
 
