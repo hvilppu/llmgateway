@@ -315,6 +315,71 @@
         }
 
         .examples-btn:hover { border-color: #4f7dff; color: #4f7dff; background: #f5f8ff; }
+
+        .sql-toast {
+            position: fixed;
+            bottom: 80px;
+            right: 20px;
+            background: #1a1a2e;
+            color: #e8f4fd;
+            border-radius: 10px;
+            max-width: 520px;
+            min-width: 260px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.28);
+            z-index: 1000;
+            overflow: hidden;
+            animation: sqlToastIn 0.2s ease;
+        }
+
+        .sql-toast-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 7px 12px;
+            background: rgba(255,255,255,0.07);
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #8899bb;
+        }
+
+        .sql-toast-header button {
+            background: none;
+            border: none;
+            color: #667;
+            cursor: pointer;
+            font-size: 1rem;
+            line-height: 1;
+            padding: 0 2px;
+        }
+
+        .sql-toast-header button:hover { color: white; }
+
+        .sql-toast pre {
+            margin: 0;
+            padding: 10px 14px 12px;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 0.79rem;
+            line-height: 1.55;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .sql-toast-bar {
+            height: 3px;
+            background: #4f7dff;
+            animation: sqlToastShrink 5s linear forwards;
+        }
+
+        @keyframes sqlToastIn {
+            from { transform: translateX(30px); opacity: 0; }
+            to   { transform: translateX(0);    opacity: 1; }
+        }
+
+        @keyframes sqlToastShrink {
+            from { width: 100%; }
+            to   { width: 0%;   }
+        }
     </style>
 </head>
 <body>
@@ -395,7 +460,37 @@
 </div>
 <div class="hint">Shift+Enter = rivinvaihto</div>
 
+<div id="sqlToast" class="sql-toast" style="display:none">
+    <div class="sql-toast-header">
+        <span>Generoitu SQL</span>
+        <button onclick="closeSqlToast()" title="Sulje">✕</button>
+    </div>
+    <pre id="sqlToastContent"></pre>
+    <div id="sqlToastBar" class="sql-toast-bar"></div>
+</div>
+
 <script>
+    const sqlToastEl  = document.getElementById('sqlToast');
+    const sqlToastContent = document.getElementById('sqlToastContent');
+    const sqlToastBar = document.getElementById('sqlToastBar');
+    let sqlToastTimer = null;
+
+    function showSqlToast(sql) {
+        sqlToastContent.textContent = sql;
+        // Käynnistä progress bar alusta
+        sqlToastBar.style.animation = 'none';
+        sqlToastBar.offsetHeight; // pakota reflow
+        sqlToastBar.style.animation = 'sqlToastShrink 5s linear forwards';
+        sqlToastEl.style.display = 'block';
+        if (sqlToastTimer) clearTimeout(sqlToastTimer);
+        sqlToastTimer = setTimeout(closeSqlToast, 5000);
+    }
+
+    function closeSqlToast() {
+        sqlToastEl.style.display = 'none';
+        if (sqlToastTimer) { clearTimeout(sqlToastTimer); sqlToastTimer = null; }
+    }
+
     const chatEl   = document.getElementById('chat');
     const inputEl  = document.getElementById('input');
     const sendBtn  = document.getElementById('sendBtn');
@@ -567,6 +662,9 @@
                         assistantText += data.content ?? '';
                         assistantEl.textContent = assistantText;
                         chatEl.scrollTop = chatEl.scrollHeight;
+
+                    } else if (eventType === 'sql') {
+                        showSqlToast(data.sql ?? '');
 
                     } else if (eventType === 'status') {
                         // Näytä vaiheteksti typing-indikaattorissa

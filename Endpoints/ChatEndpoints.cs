@@ -646,6 +646,18 @@ public static class ChatEndpoints
 
                 foreach (var tc in raw.ToolCalls)
                 {
+                    // Lähetetään generoitu SQL-kysely UI:lle toast-näyttöä varten
+                    if (tc.Function.Name == "query_database")
+                    {
+                        try
+                        {
+                            using var argsDoc = JsonDocument.Parse(tc.Function.Arguments);
+                            if (argsDoc.RootElement.TryGetProperty("sql", out var sqlEl))
+                                await WriteEventAsync(response, "sql", new { sql = sqlEl.GetString() }, cancellationToken);
+                        }
+                        catch { /* parsinta voi epäonnistua — ei kriittistä */ }
+                    }
+
                     await WriteEventAsync(response, "status", new { message = "Suoritetaan tietokantakysely..." }, cancellationToken);
 
                     string toolResult;
