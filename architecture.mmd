@@ -21,8 +21,8 @@ flowchart TD
         subgraph AL["Agenttiloop — ToolsEnabled=true · max 5 kierrosta"]
             RC["GetRawCompletionAsync\n+ tool definitions"]
             FIN{finish_reason?}
-            CQS["CosmosQueryService\n+ CosmosSchemaProvider\ndynaaminen skeema, 60 min"]
-            SQS["SqlQueryService\n+ SqlSchemaProvider\ndynaaminen skeema, 60 min"]
+            CQS["CosmosQueryService\n+ CosmosSchemaProvider\nstaattinen skeema (const)"]
+            SQS["SqlQueryService\n+ SqlSchemaProvider\nstaattinen skeema (const)"]
         end
     end
 

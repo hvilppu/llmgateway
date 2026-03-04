@@ -9,7 +9,7 @@ Program.cs                              DI-rekisteröinnit, middleware-pipeline
 
 Endpoints/
   ChatEndpoints.cs                      POST /api/chat         — yksinkertainen + agenttiloop (function calling)
-                                        POST /api/chat/stream  — SSE-streaming, event-tyypit: status / token / done / error
+                                        POST /api/chat/stream  — SSE-streaming, event-tyypit: status / token / done / error / sql
                                         System promptit: SimpleSystemPrompt (const), BuildCosmosSystemPrompt(schema),
                                         BuildSqlSystemPrompt(schema), BuildRagSystemPrompt(ragContext, schema)
                                         Tool-kuvaukset: CosmosQueryDatabaseTool, SqlQueryDatabaseTool
@@ -40,8 +40,8 @@ Services/
                                         CosmosOptions      — Cosmos DB -yhteysasetukset (MaxRows: 500)
                                         SqlOptions         — MS SQL -yhteysasetukset (MaxRows: 500)
   SchemaService.cs                      ISchemaProvider
-                                        CosmosSchemaProvider — palauttaa CosmosOptions.Schema (appsettings)
-                                        SqlSchemaProvider    — palauttaa SqlOptions.Schema (appsettings)
+                                        CosmosSchemaProvider — kovakoodattu const string (documents-containerin kentät)
+                                        SqlSchemaProvider    — kovakoodattu const string (mittaukset-taulun kentät)
   RagService.cs                         IRagService, CosmosRagService, RagOptions
                                         VectorDistance-haku kuukausiraportit-containerista, TopK=3
 
@@ -78,7 +78,7 @@ SyncFunction/                           Erillinen Azure Functions -sovellus
 - Policy-pohjainen model routing
 - `Microsoft.Data.SqlClient` MS SQL -kyselyihin
 - Keyed DI (`AddKeyedSingleton`) — molemmat query- ja schema-backendit aktiivisena samanaikaisesti
-- Dynaaminen skeemahaku välimuistilla (`ISchemaProvider`) — system prompt rakennetaan ajonaikana
+- Staattinen skeema koodissa (`ISchemaProvider`) — kovakoodattu `SchemaService.cs`:ään, injektoidaan system promptiin
 
 ## Konfiguraatio (appsettings)
 
@@ -233,7 +233,7 @@ OpenAPI-schema: `http://localhost:5079/openapi/v1.json`
 1. POST /api/chat `{ "message": "Mikä oli keskilämpötila Helsingissä helmikuussa?", "policy": "tools" }`
 2. `ChatEndpoints` → `IsToolsEnabled` → true → `HandleWithToolsAsync`
 3. `GetQueryBackend` → `"cosmos"` → `CosmosQueryService` + `CosmosSchemaProvider`
-4. `CosmosSchemaProvider.GetSchemaAsync()` → skeema välimuistista tai `SELECT TOP 1 * FROM c`
+4. `CosmosSchemaProvider.GetSchemaAsync()` → kovakoodattu skeema (const string)
 5. `BuildCosmosSystemPrompt(schema)` → system prompt skeemalla injektoituna
 6. Rakennetaan messages-lista + tool-määrittelyt
 7. `AzureOpenAIClient.GetRawCompletionAsync(messages, tools, "gpt4")`
@@ -247,7 +247,7 @@ OpenAPI-schema: `http://localhost:5079/openapi/v1.json`
 1. POST /api/chat `{ "message": "Mikä oli keskilämpötila Helsingissä helmikuussa?", "policy": "tools_sql" }`
 2. `ChatEndpoints` → `IsToolsEnabled` → true → `HandleWithToolsAsync`
 3. `GetQueryBackend` → `"mssql"` → `SqlQueryService` + `SqlSchemaProvider`
-4. `SqlSchemaProvider.GetSchemaAsync()` → skeema välimuistista tai `INFORMATION_SCHEMA.COLUMNS`
+4. `SqlSchemaProvider.GetSchemaAsync()` → kovakoodattu skeema (const string)
 5. `BuildSqlSystemPrompt(schema)` → system prompt skeemalla injektoituna
 6. Rakennetaan messages-lista + tool-määrittelyt
 7. `AzureOpenAIClient.GetRawCompletionAsync(messages, tools, "gpt4")`
@@ -261,7 +261,7 @@ OpenAPI-schema: `http://localhost:5079/openapi/v1.json`
 1. POST /api/chat `{ "message": "Millainen talvi 2024 oli Helsingissä?", "policy": "rag" }`
 2. `ChatEndpoints` → `RoutingEngine.ResolveModelChain` → `["gpt4"]`
 3. `IsRagEnabled` → true → RAG-haara (ennen `IsToolsEnabled`-tarkistusta)
-4. `CosmosSchemaProvider.GetSchemaAsync()` → skeema välimuistista tai `SELECT TOP 1 * FROM c`
+4. `CosmosSchemaProvider.GetSchemaAsync()` → kovakoodattu skeema (const string)
 5. `AzureOpenAIClient.GetEmbeddingAsync(request.Message)` → `float32[1536]`
 6. `CosmosRagService.GetContextAsync(queryEmbedding)` → VectorDistance-haku `kuukausiraportit`-containerista → top-3 kuvaukset merkkijonona
 7. `BuildRagSystemPrompt(ragContext, schema)` → system prompt RAG-kontekstilla ja skeemalla injektoituna

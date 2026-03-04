@@ -612,7 +612,23 @@ public static class ChatEndpoints
 
         for (int iteration = 0; iteration < MaxToolIterations; iteration++)
         {
-            var raw = await client.GetRawCompletionAsync(messages, tools, modelKey, cancellationToken);
+            AzureRawCompletion raw;
+            try
+            {
+                raw = await client.GetRawCompletionAsync(messages, tools, modelKey, cancellationToken);
+            }
+            catch (CircuitBreakerOpenException ex)
+            {
+                logger.LogWarning(ex, "Circuit breaker auki streaming-agenttiloopissa. ModelKey={ModelKey}", modelKey);
+                await WriteEventAsync(response, "error", new { message = "LLM-palvelu tilapäisesti poissa — yritä hetken kuluttua uudelleen" }, cancellationToken);
+                return;
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "GetRawCompletionAsync epäonnistui streaming-agenttiloopissa. ModelKey={ModelKey}", modelKey);
+                await WriteEventAsync(response, "error", new { message = "LLM-palveluvirhe — yritä uudelleen" }, cancellationToken);
+                return;
+            }
 
             if (raw.FinishReason == "stop")
             {

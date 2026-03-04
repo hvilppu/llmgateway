@@ -56,8 +56,8 @@ Tärkeimmät käsitteet, lyhenteet ja suunnittelumallit tässä projektissa.
 | **T-SQL** | Transact-SQL — Microsoft SQL Serverin SQL-murre. Käytä `TOP N` eikä `LIMIT`, tukee `MONTH()`/`YEAR()` ja `ORDER BY` + `GROUP BY` yhdistettynä. |
 | **IQueryService** | Yhteinen rajapinta molemmille query-backendeille. Toteutukset: `CosmosQueryService` (keyed: `"cosmos"`) ja `SqlQueryService` (keyed: `"mssql"`). Vain SELECT-kyselyt sallittu. `CosmosQueryService` tarkistaa `StartsWith("SELECT")`; `SqlQueryService` käyttää AST-pohjaista validointia (`TSql160Parser`, `BlockedSchemaVisitor`) — estää myös sys-skeeman, OPENROWSET:n ja OPENQUERY:n. |
 | **MaxRows** | `CosmosOptions.MaxRows` ja `SqlOptions.MaxRows` (oletuksena 500). Rajoittaa yhdestä `query_database`-kutsusta palautettavien rivien enimmäismäärän — estää liian suurten tulosjoukkojen palautuksen LLM:lle. |
-| **ISchemaProvider** | Rajapinta skeeman lukemiseen. Toteutukset: `CosmosSchemaProvider` (keyed: `"cosmos"`) ja `SqlSchemaProvider` (keyed: `"mssql"`). Palauttavat `CosmosOptions.Schema` / `SqlOptions.Schema` — appsettingsiin staattisesti määritetyn skeeman. Tietokantaa ei kyselläSQL-skeeman hakemiseksi. |
-| **Staattinen skeema** | Tietokannan kentät ja tyypit määritetään appsettingsissa (`CosmosRag:Schema`, `Sql:Schema`). Skeema injektoidaan system promptiin ennen LLM-kutsua jotta LLM osaa generoida oikean SQL-syntaksin. Päivitetään manuaalisesti kun tietokannan rakenne muuttuu. |
+| **ISchemaProvider** | Rajapinta skeeman lukemiseen. Toteutukset: `CosmosSchemaProvider` (keyed: `"cosmos"`) ja `SqlSchemaProvider` (keyed: `"mssql"`). Palauttavat kovakoodatun `const string` -skeeman suoraan koodista (`SchemaService.cs`). Tietokantaa ei kyselläSQL-skeeman hakemiseksi. |
+| **Staattinen skeema** | Tietokannan kenttärakenne on kovakoodattu `SchemaService.cs`:ään (`const string`). Skeema injektoidaan system promptiin ennen LLM-kutsua jotta LLM osaa generoida oikean SQL-syntaksin. Päivitetään manuaalisesti koodiin kun tietokannan rakenne muuttuu. |
 
 ---
 
@@ -117,7 +117,7 @@ Tärkeimmät käsitteet, lyhenteet ja suunnittelumallit tässä projektissa.
 | **IHttpClientFactory** | .NET:n suositeltu tapa luoda `HttpClient`-instansseja (hallitsee elinkaaret, välttää socket exhaustion). |
 | **Typed Client** | `IHttpClientFactory`-malli, jossa `HttpClient` injektoidaan suoraan omaan palveluluokkaan (`AzureOpenAIClient`). |
 | **Middleware** | ASP.NET Core -putki, jossa HTTP-pyyntö kulkee ennen endpointia. Tässä projektissa: `ApiKeyMiddleware` (`X-Api-Key`-headerintarkistus). |
-| **SSE** | Server-Sent Events — HTTP-pohjainen yksisuuntainen push-protokolla (`text/event-stream`). `/api/chat/stream` käyttää SSE:tä streaming-vastauksiin. Event-tyypit: `status` (työkalukutsujen tila), `token` (vastausteksti pala palalta), `done` (valmis + metatiedot), `error` (virhe). |
+| **SSE** | Server-Sent Events — HTTP-pohjainen yksisuuntainen push-protokolla (`text/event-stream`). `/api/chat/stream` käyttää SSE:tä streaming-vastauksiin. Event-tyypit: `status` (työkalukutsujen tila), `token` (vastausteksti pala palalta), `done` (valmis + metatiedot), `error` (virhe), `sql` (LLM:n generoima SQL-kysely — näytetään UI:ssa toast-ilmoituksena). |
 | **OpenAPI** | REST API:n kuvausstandardi. .NET 10:ssä sisäänrakennettu (`AddOpenApi` / `MapOpenApi`), ei Swashbucklea. |
 | **Structured Logging** | Lokitus avain-arvo-pareina (`Policy=`, `ModelKey=`, `LatencyMs=`, `Backend=`) — helpompi hakea ja suodattaa log-järjestelmistä. |
 
