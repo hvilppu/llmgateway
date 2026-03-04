@@ -56,8 +56,8 @@ Tärkeimmät käsitteet, lyhenteet ja suunnittelumallit tässä projektissa.
 | **T-SQL** | Transact-SQL — Microsoft SQL Serverin SQL-murre. Käytä `TOP N` eikä `LIMIT`, tukee `MONTH()`/`YEAR()` ja `ORDER BY` + `GROUP BY` yhdistettynä. |
 | **IQueryService** | Yhteinen rajapinta molemmille query-backendeille. Toteutukset: `CosmosQueryService` (keyed: `"cosmos"`) ja `SqlQueryService` (keyed: `"mssql"`). Vain SELECT-kyselyt sallittu. `CosmosQueryService` tarkistaa `StartsWith("SELECT")`; `SqlQueryService` käyttää AST-pohjaista validointia (`TSql160Parser`, `BlockedSchemaVisitor`) — estää myös sys-skeeman, OPENROWSET:n ja OPENQUERY:n. |
 | **MaxRows** | `CosmosOptions.MaxRows` ja `SqlOptions.MaxRows` (oletuksena 500). Rajoittaa yhdestä `query_database`-kutsusta palautettavien rivien enimmäismäärän — estää liian suurten tulosjoukkojen palautuksen LLM:lle. |
-| **ISchemaProvider** | Rajapinta dynaamista skeemahakua varten. Cosmos: `SELECT TOP 1 * FROM c` → JSON-polut pistenotaatiolla. MS SQL: `INFORMATION_SCHEMA.COLUMNS`. Välimuisti 60 min. |
-| **Skeemahaku** | Tietokannan rakenne haetaan ajonaikana ja injektoidaan system promptiin, jotta LLM osaa generoida oikean syntaksin. Epäonnistuessa prompt rakentuu ilman skeemaa — pyyntö ei kaadu. |
+| **ISchemaProvider** | Rajapinta skeeman lukemiseen. Toteutukset: `CosmosSchemaProvider` (keyed: `"cosmos"`) ja `SqlSchemaProvider` (keyed: `"mssql"`). Palauttavat `CosmosOptions.Schema` / `SqlOptions.Schema` — appsettingsiin staattisesti määritetyn skeeman. Tietokantaa ei kyselläSQL-skeeman hakemiseksi. |
+| **Staattinen skeema** | Tietokannan kentät ja tyypit määritetään appsettingsissa (`CosmosRag:Schema`, `Sql:Schema`). Skeema injektoidaan system promptiin ennen LLM-kutsua jotta LLM osaa generoida oikean SQL-syntaksin. Päivitetään manuaalisesti kun tietokannan rakenne muuttuu. |
 
 ---
 

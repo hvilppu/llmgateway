@@ -40,8 +40,8 @@ Services/
                                         CosmosOptions      — Cosmos DB -yhteysasetukset (MaxRows: 500)
                                         SqlOptions         — MS SQL -yhteysasetukset (MaxRows: 500)
   SchemaService.cs                      ISchemaProvider
-                                        CosmosSchemaProvider — skeema näytedokumentista (TOP 1), 60 min välimuisti
-                                        SqlSchemaProvider    — skeema INFORMATION_SCHEMA.COLUMNS, 60 min välimuisti
+                                        CosmosSchemaProvider — palauttaa CosmosOptions.Schema (appsettings)
+                                        SqlSchemaProvider    — palauttaa SqlOptions.Schema (appsettings)
   RagService.cs                         IRagService, CosmosRagService, RagOptions
                                         VectorDistance-haku kuukausiraportit-containerista, TopK=3
 
@@ -148,13 +148,14 @@ Backend valitaan automaattisesti policyn mukaan `ChatEndpoints.MapChatEndpoints`
 
 Molemmat backendit rekisteröity keyed serviceiksi (`"cosmos"` ja `"mssql"`), jolloin molemmat ovat aktiivisena samanaikaisesti. Backendille annetaan eri system prompt, tool-kuvaus ja skeema, jotta LLM osaa generoida oikean SQL-syntaksin.
 
-## Dynaaminen skeemahaku
+## Staattinen skeema
 
-Skeema haetaan tietokannasta ajonaikana ja injektoidaan system promptiin ennen LLM-kutsua:
-- **Cosmos DB**: `SELECT TOP 1 * FROM c` → JSON-rakenne puretaan rekursiivisesti pistenotaatiolla (`c.content.paikkakunta` jne.)
-- **MS SQL**: `INFORMATION_SCHEMA.COLUMNS` → taulut ja sarakkeet tyyppitinetoineen
+Skeema on kovakoodattu `SchemaService.cs`:ään ja injektoidaan system promptiin ennen LLM-kutsua. Tietokantaa **ei kyselläSQL-skeeman hakemiseksi** — se olisi tietoturvariski.
 
-Molemmat käyttävät `SemaphoreSlim` double-check -välimuistia (60 min). Jos haku epäonnistuu, system prompt rakentuu ilman skeemaa — pyyntö ei kaadu.
+- `CosmosSchemaProvider` — `documents`-containerin kenttärakenne (const string)
+- `SqlSchemaProvider` — `mittaukset`-taulun kenttärakenne (const string)
+
+Skeema päivitetään manuaalisesti koodiin kun tietokannan rakenne muuttuu.
 
 Keyed DI: `ISchemaProvider` rekisteröity avaimilla `"cosmos"` ja `"mssql"` samoin kuin `IQueryService`.
 
